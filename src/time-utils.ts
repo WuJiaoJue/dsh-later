@@ -38,14 +38,30 @@ export const COMMON_TIME_ZONES: readonly string[] = [
   'Europe/Paris',
 ];
 
+/** 文案语言 id（zh 中文；en 英文；其余回退中文）。 */
+export type TextLocale = 'zh' | 'en';
+
 /**
- * 相对时间文案："刚刚"、"X 分钟后"、"X 小时后"、"明天 HH:mm"。
+ * 相对时间文案：zh "约 X 分钟后"；en "in ~X minutes" 等。
  * @param epoch - 目标 epoch 毫秒。
  * @param now - 当前 epoch 毫秒（默认 Date.now()）。
- * @returns 微文案字符串（中文）。
+ * @param locale - 文案语言（默认 zh，host 侧无浏览器语境保持中文）。
  */
-export function formatRelative(epoch: number, now: number = Date.now()): string {
+export function formatRelative(epoch: number, now: number = Date.now(), locale: TextLocale = 'zh'): string {
   const diff = epoch - now;
+  if (locale === 'en') {
+    if (diff < 0) return 'overdue';
+    if (diff < MINUTE_MS) return 'sending soon';
+    const minutes = Math.round(diff / MINUTE_MS);
+    if (minutes < 60) return `in ~${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const restMinutes = minutes % 60;
+    if (hours < 24) {
+      return restMinutes === 0 ? `in ~${hours} h` : `in ~${hours} h ${restMinutes} min`;
+    }
+    const days = Math.floor(hours / 24);
+    return `in ~${days} days`;
+  }
   if (diff < 0) return '已到期';
   if (diff < MINUTE_MS) return '即将发送';
   const minutes = Math.round(diff / MINUTE_MS);
@@ -68,10 +84,10 @@ export const DAY_MS = 24 * HOUR_MS;
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 
 /**
- * 完整时间文案："{M}月{d}日 {周X} HH:mm"（按指定时区）。
+ * 完整时间文案：zh "{M}月{d}日 {周X} HH:mm"、en "Wed, Aug 26, 14:45"（按指定时区）。
  */
-export function formatAbsolute(epoch: number, timeZone: string): string {
-  const formatter = new Intl.DateTimeFormat('zh-CN', {
+export function formatAbsolute(epoch: number, timeZone: string, locale: TextLocale = 'zh'): string {
+  const formatter = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
     timeZone,
     month: 'numeric',
     day: 'numeric',

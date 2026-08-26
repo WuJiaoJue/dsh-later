@@ -24,6 +24,7 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 - **关网页也能触发**：任务持久化在 session JSONL（事件溯源），到期由 dsh-schedule 引擎 dispatch + `followup()` 注入用户角色消息，不经浏览器。
 - **注入防护**：非 `/later` 路径的提醒内容作为「非信任提醒内容」经 `renderReminderFraming` JSON 转义转达，不当作新的用户指令。
 - **fork 隔离**：子会话不继承父会话提醒。
+- **跟随 DSH 界面语言**：客户端微文案接入宿主 `locale` 服务（`useSchedT`，`useSyncExternalStore` 订阅），设置页切换 中文/English 时插件按钮、面板、dock、时间文案**实时跟随**（无刷新）；宿主无 locale 服务时回退中文。
 - **开发体验**：`npm run watch` 监听 src/ 自动重建 + 跑形状回归测试（lib/ 硬链接自动同步到 profile）。
 - **可测试**：60 个单元/集成测试覆盖纯逻辑、注册形状（回归护栏）与端到端生命周期。
 
@@ -191,12 +192,13 @@ dsh-session-scheduler/
 │   ├── runtime.ts            # 用户提醒调度器（武装 timer、到期 dispatch + followup、delivery 分流）
 │   ├── commands.ts           # 客户端↔宿主变更通道（slash command：create/list/delete/edit/schedule/later）
 │   ├── smart-window.ts       # 智能时段计算（纯函数，host/client 共享）
-│   ├── time-utils.ts         # 时间格式化（纯函数，host/client 共享）
+│   ├── time-utils.ts         # 时间格式化（纯函数，host/client 共享；相对/绝对时间支持 zh/en）
 │   ├── owned-event-registration.ts  # 自有事件类型登记（避免历史日志拒读）
 │   └── client/
 │       ├── index.tsx         # 浏览器入口：input.right/dock 插槽注册 + 命令通道 + toast 宿主
 │       ├── styles.ts         # ss- 命名空间 Design Tokens + 组件样式 + toast/dock 编辑样式
-│       ├── strings.ts        # 微文案（中文优先）
+│       ├── strings.ts        # 双语微文案字典（zh/en 键集一致）+ format 占位符
+│       ├── useSchedT.ts      # 跟随宿主 locale 的文案 hook（useSyncExternalStore）
 │       ├── toast.tsx         # 提醒到达横幅（投影差异检测触发）
 │       └── components/       # SchedButton / SchedPanel / ScheduleDock（含行内编辑）/ TaskList
 ├── tests/                    # 单元 + 集成测试（node:test，含 runtime 决策、投影形状回归、delivery 分流）

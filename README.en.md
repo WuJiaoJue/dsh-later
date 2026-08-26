@@ -24,6 +24,7 @@ DSH's existing scheduling capabilities each miss a piece: `dsh-schedule` is expo
 - **Fires even with the page closed**: tasks persist in the session JSONL (event sourcing); when due, the dsh-schedule engine dispatches and injects a user-role message via `followup()` — no browser required.
 - **Injection guard**: reminder content on non-`/later` paths is conveyed as "untrusted reminder content" through `renderReminderFraming` with JSON escaping, never treated as fresh user instructions.
 - **Fork isolation**: child sessions do not inherit the parent session's reminders.
+- **Follows the DSH UI language**: client microcopy is wired into the host `locale` service (`useSchedT`, a `useSyncExternalStore` subscription) — switching 中文/English in Settings flips the plugin's button, panel, dock and time wording **live**, no reload; falls back to Chinese when the host has no locale service.
 - **Developer experience**: `npm run watch` watches `src/` for automatic rebuilds plus shape-regression tests (`lib/` is hard-linked into the profile automatically).
 - **Testable**: 60 unit/integration tests covering pure logic, registration shape (regression guardrails), and end-to-end lifecycle.
 
@@ -191,12 +192,13 @@ dsh-session-scheduler/
 │   ├── runtime.ts            # user-reminder scheduler (arms timers, dispatches + followup when due, delivery routing)
 │   ├── commands.ts           # client↔host change channel (slash commands: create/list/delete/edit/schedule/later)
 │   ├── smart-window.ts       # smart time-slot computation (pure function, shared host/client)
-│   ├── time-utils.ts         # time formatting (pure function, shared host/client)
+│   ├── time-utils.ts         # time formatting (pure function, shared host/client; relative/absolute wording in zh/en)
 │   ├── owned-event-registration.ts  # owned event type registration (avoids history-log rejection)
 │   └── client/
 │       ├── index.tsx         # browser entry: input.right/dock slot registration + command channel + toast host
 │       ├── styles.ts         # ss- namespaced design tokens + component styles + toast/dock edit styles
-│       ├── strings.ts        # microcopy (Chinese-first)
+│       ├── strings.ts        # bilingual microcopy dictionaries (zh/en, identical key sets) + format placeholders
+│       ├── useSchedT.ts      # hook following the host locale (useSyncExternalStore)
 │       ├── toast.tsx         # arrival banner (triggered by projection diff detection)
 │       └── components/       # SchedButton / SchedPanel / ScheduleDock (inline editing) / TaskList
 ├── tests/                    # unit + integration tests (node:test: runtime decisions, projection shape regression, delivery routing)

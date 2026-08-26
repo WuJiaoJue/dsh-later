@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { detectTimeZone } from '../../time-utils.js';
-import { strings } from '../strings.js';
+import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import type { ClientSchedule, CreateCommandPayload } from '../types.js';
 import { SchedPanel } from './SchedPanel.js';
 import { useSchedules } from '../hooks/useSchedules.js';
@@ -17,6 +17,8 @@ import { useSchedules } from '../hooks/useSchedules.js';
 export interface SchedButtonInjected {
   /** 向宿主执行一条 slash 命令；返回是否受理。 */
   callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
+  locale?: LocaleFaceLike;
 }
 
 /** 会话作用域插槽条目收到的标准 props + 注入。 */
@@ -34,7 +36,8 @@ export interface SchedButtonProps extends SchedButtonInjected {
 }
 
 export function SchedButton(props: SchedButtonProps): JSX.Element {
-  const { callCommand, sessionId, inputActions, input, useProjection, useInput } = props;
+  const { callCommand, sessionId, inputActions, input, useProjection, useInput, locale } = props;
+  const { lang, t } = useSchedT(locale);
   const [open, setOpen] = useState(false);
 
   const {
@@ -75,7 +78,7 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
       await handleCreate(inputPayload);
     } catch {
       setOpen(false);
-      throw new Error('命令未被受理');
+      throw new Error(t.editErrNotAccepted);
     }
   };
 
@@ -84,8 +87,8 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
       <button
         type="button"
         className={open ? 'ss-sched-btn ss-active' : 'ss-sched-btn'}
-        title={strings.buttonSchedule}
-        aria-label={strings.buttonSchedule}
+        title={t.buttonSchedule}
+        aria-label={t.buttonSchedule}
         aria-expanded={open}
         disabled={!enabled}
         onClick={() => setOpen((value) => !value)}
@@ -103,6 +106,8 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
             schedules={schedules}
             timeZone={detectTimeZone()}
             busy={busy}
+            t={t}
+            lang={lang}
             onClose={() => setOpen(false)}
             onCreate={handleCreateWithErrorBoundary}
             onDelete={(id) => void handleDelete(id)}
