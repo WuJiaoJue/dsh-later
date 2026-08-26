@@ -12,8 +12,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { detectTimeZone, formatHhmm } from '../../time-utils.js';
-import { strings, format } from '../strings.js';
+import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
+import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import { showReminderToast } from '../toast.jsx';
 import type { ClientSchedule } from '../types.js';
 
@@ -71,10 +72,16 @@ function barSegments(
 export interface ScheduleDockInjected {
   /** 向宿主执行一条 slash 命令；返回是否受理。 */
   callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
+  locale?: LocaleFaceLike;
 }
 
 /** 会话作用域插槽条目收到的标准 props + 注入。 */
-export interface ScheduleDockProps extends ScheduleDockInjected {
+export interface ScheduleDockProps extends Omit<ScheduleDockInjected, 'locale'> {
+  /** 向宿主执行一条 slash 命令；返回是否受理。 */
+  callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
+  locale?: LocaleFaceLike;
   /** 会话作用域标准 hook：读取投影。 */
   useProjection?: (key: string) => { schedules?: readonly ClientSchedule[] } | undefined;
   /** 会话 id。 */
@@ -85,8 +92,9 @@ const deleteLine = (id: string): string => `/user-schedule-delete ${JSON.stringi
 const editLine = (id: string, prompt: string): string =>
   `/user-schedule-edit ${JSON.stringify({ id, prompt })}`;
 
-export function ScheduleDock({ callCommand, sessionId, useProjection }: ScheduleDockProps): JSX.Element | null {
+export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: ScheduleDockProps): JSX.Element | null {
   const now = useNow(1000);
+  const { t } = useSchedT(locale);
   const projection = typeof useProjection === 'function' ? useProjection('userSchedules') : undefined;
   const schedules = useMemo(
     () => [...(projection?.schedules ?? [])].sort(
@@ -189,17 +197,17 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
   const submitEdit = (id: string): void => {
     const trimmed = editingText.trim();
     if (trimmed.length === 0) {
-      setEditErr(strings.editErrEmpty);
+      setEditErr(t.editErrEmpty);
       return;
     }
     suppress(id);
     setSaving(true);
     setEditErr(null);
     void callCommand(sessionId, editLine(id, trimmed)).then((ok) => {
-      if (!ok) setEditErr(format(strings.editErrFailed, { message: '未受理' }));
+      if (!ok) setEditErr(format(t.editErrFailed, { message: t.editErrNotAccepted }));
       else cancelEdit();
     }).catch(() => {
-      setEditErr(format(strings.editErrFailed, { message: '命令失败' }));
+      setEditErr(format(t.editErrFailed, { message: t.editErrCommandFailed }));
     }).finally(() => setSaving(false));
   };
 
@@ -221,7 +229,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
               else if (event.key === 'Escape') cancelEdit();
               event.stopPropagation();
             }}
-            aria-label={`${strings.editTask}：${item.prompt}`}
+            aria-label={`${t.editTask}: ${item.prompt}`}
           />
           <button
             type="button"
@@ -229,9 +237,9 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
             disabled={saving || editingText.trim().length === 0}
             onClick={() => submitEdit(item.id)}
           >
-            {saving ? '…' : strings.editSave}
+            {saving ? '…' : t.editSave}
           </button>
-          <button type="button" className="ss-dock-row-cancel" onClick={cancelEdit} aria-label={strings.editCancel}>
+          <button type="button" className="ss-dock-row-cancel" onClick={cancelEdit} aria-label={t.editCancel}>
             ✕
           </button>
           {editErr !== null && <span className="ss-dock-edit-err">{editErr}</span>}
@@ -245,17 +253,17 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
           <div className="ss-dock-row-line">
             <span className="ss-dock-row-time">{formatHhmm(epoch, detectTimeZone())}</span>
             <span className={`ss-dock-row-countdown${state === 'overdue' ? ' ss-due' : ''}`}>
-              {state === 'overdue' ? strings.dueAnyMoment : `${strings.countdownLeft} ${formatCountdown(epoch - now)}`}
+              {state === 'overdue' ? t.dueAnyMoment : `${t.countdownLeft} ${formatCountdown(epoch - now)}`}
             </span>
             <span className="ss-dock-row-prompt" title={item.prompt}>{item.prompt}</span>
           </div>
-          <MultiBar item={item} now={now} firstSeen={firstSeenRef.current} />
+          <MultiBar item={item} now={now} firstSeen={firstSeenRef.current} t={t} />
         </div>
         <button
           type="button"
           className="ss-dock-row-edit"
-          title={strings.editTask}
-          aria-label={`${strings.editTask}：${item.prompt}`}
+          title={t.editTask}
+          aria-label={`${t.editTask}: ${item.prompt}`}
           onClick={() => startEdit(item)}
         >
           ✎
@@ -263,8 +271,8 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
         <button
           type="button"
           className="ss-dock-row-cancel"
-          title={strings.deleteTask}
-          aria-label={`${strings.deleteTask}：${item.prompt}`}
+          title={t.deleteTask}
+          aria-label={`${t.deleteTask}: ${item.prompt}`}
           onClick={() => handleCancel(item.id)}
         >
           ✕
@@ -289,9 +297,9 @@ export function ScheduleDock({ callCommand, sessionId, useProjection }: Schedule
                 <polyline points="12 6 12 12 16 14" />
               </svg>
             </span>
-            <span className="ss-dock-title">{strings.panelTitle} ({schedules.length})</span>
+            <span className="ss-dock-title">{t.panelTitle} ({schedules.length})</span>
             <span className="ss-dock-progress">
-              {formatHhmm(nextEpoch, detectTimeZone())} · {strings.countdownLeft} {formatCountdown(nextEpoch - now)} · {next.prompt}
+              {formatHhmm(nextEpoch, detectTimeZone())} · {t.countdownLeft} {formatCountdown(nextEpoch - now)} · {next.prompt}
             </span>
             <span className={expanded ? 'ss-dock-chevron ss-open' : 'ss-dock-chevron'} aria-hidden="true">⌄</span>
           </button>
@@ -307,10 +315,12 @@ function MultiBar({
   item,
   now,
   firstSeen,
+  t,
 }: {
   item: ClientSchedule;
   now: number;
   firstSeen: ReadonlyMap<string, number>;
+  t: SchedStrings;
 }): JSX.Element {
   const segments = barSegments(item, now, firstSeen);
   const overall = segments.reduce((sum, ratio) => sum + ratio, 0) / segments.length;
@@ -321,7 +331,7 @@ function MultiBar({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(overall * 100)}
-      aria-label={strings.panelTitle}
+      aria-label={t.panelTitle}
     >
       {segments.map((ratio, index) => (
         <div key={index} className="ss-dock-bar">

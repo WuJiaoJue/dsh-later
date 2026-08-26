@@ -9,9 +9,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { epochFromLocal, localFieldsOf, nextSmartAt } from '../../smart-window.js';
+import type { TextLocale } from '../../time-utils.js';
 import { formatAbsolute, formatRelative } from '../../time-utils.js';
 import { TaskList } from './TaskList.js';
-import { format, strings } from '../strings.js';
+import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import type { ClientAtInput, ClientSchedule, CreateCommandPayload } from '../types.js';
 
@@ -22,6 +23,10 @@ export interface SchedPanelProps {
   schedules: readonly ClientSchedule[];
   timeZone: string;
   busy: boolean;
+  /** 文案字典（跟随宿主 locale，由 SchedButton 传入）。 */
+  t: SchedStrings;
+  /** 当前语言 id（时间文案用）。 */
+  lang: TextLocale;
   /** AC-06：草稿变更自动取消的任务 id 集合。 */
   onClose: () => void;
   onCreate: (input: CreateCommandPayload) => Promise<void>;
@@ -54,6 +59,8 @@ export function SchedPanel({
   schedules,
   timeZone,
   busy,
+  t,
+  lang,
   onClose,
   onCreate,
   onDelete,
@@ -103,16 +110,16 @@ export function SchedPanel({
   // 快捷选项（每分钟重算一次足够；直接跟随 now 简单可靠）。
   const quickOptions = useMemo<QuickOption[]>(() => {
     const options: QuickOption[] = [
-      { kind: 'after', seconds: 600, label: strings.quick10m },
-      { kind: 'after', seconds: 3600, label: strings.quick1h },
+      { kind: 'after', seconds: 600, label: t.quick10m },
+      { kind: 'after', seconds: 3600, label: t.quick1h },
     ];
     const todayEvening = atOnDay(0, '18:00', timeZone, now);
     if (todayEvening !== null && todayEvening.epoch > now) {
-      options.push({ kind: 'at', ...todayEvening, label: `${strings.today} 18:00` });
+      options.push({ kind: 'at', ...todayEvening, label: `${t.today} 18:00` });
     }
     const tomorrowMorning = atOnDay(1, '09:00', timeZone, now);
     if (tomorrowMorning !== null && tomorrowMorning.epoch > now) {
-      options.push({ kind: 'at', ...tomorrowMorning, label: `${strings.tomorrow} 09:00` });
+      options.push({ kind: 'at', ...tomorrowMorning, label: `${t.tomorrow} 09:00` });
     }
     const smart = nextSmartAt(now, timeZone);
     if (smart !== null) {
@@ -120,12 +127,12 @@ export function SchedPanel({
         kind: 'smart',
         at: { date: smart.date, time: smart.time, time_zone: smart.time_zone },
         epoch: smart.epoch,
-        label: strings.quickSmart,
+        label: t.quickSmart,
       });
     }
-    options.push({ kind: 'custom', label: strings.quickCustom });
+    options.push({ kind: 'custom', label: t.quickCustom });
     return options;
-  }, [timeZone, now]);
+  }, [timeZone, now, t]);
 
   // 当前选中的目标（custom 分支单独计算）。
   const target = useMemo<{ at?: ClientAtInput; after_seconds?: number; epoch: number } | null>(() => {
@@ -144,17 +151,17 @@ export function SchedPanel({
 
   const targetLabel = useMemo(() => {
     if (target === undefined || target === null) return null;
-    return `${formatAbsolute(target.epoch, timeZone)} · ${formatRelative(target.epoch, now)}`;
+    return `${formatAbsolute(target.epoch, timeZone, lang)} · ${formatRelative(target.epoch, now, lang)}`;
   }, [target, timeZone, now]);
 
   const handleConfirm = async (): Promise<void> => {
     const text = defaultPrompt.trim();
     if (text.length === 0) {
-      setError(strings.errPromptEmpty);
+      setError(t.errPromptEmpty);
       return;
     }
     if (target === null) {
-      setError(strings.errTimePast);
+      setError(t.errTimePast);
       return;
     }
     setError(null);
@@ -167,7 +174,7 @@ export function SchedPanel({
       onClose();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      setError(format(strings.errCreateFailed, { message }));
+      setError(format(t.errCreateFailed, { message }));
     }
   };
 
@@ -176,7 +183,7 @@ export function SchedPanel({
     try {
       onDelete(id);
     } catch (cause) {
-      setError(format(strings.errDeleteFailed, { message: cause instanceof Error ? cause.message : String(cause) }));
+      setError(format(t.errDeleteFailed, { message: cause instanceof Error ? cause.message : String(cause) }));
     }
     window.setTimeout(() => {
       setCancelling((current) => {
@@ -191,15 +198,15 @@ export function SchedPanel({
   const canConfirm = !busy && !promptEmpty && target !== null;
 
   return (
-    <div className="ss-panel" data-ss-panel="" role="dialog" aria-label={strings.panelTitle} style={{ bottom }}>
+    <div className="ss-panel" data-ss-panel="" role="dialog" aria-label={t.panelTitle} style={{ bottom }}>
       <div className="ss-panel-header">
-        <span className="ss-panel-title">{strings.panelTitle}</span>
-        <button type="button" className="ss-panel-close" aria-label={strings.close} onClick={onClose}>
+        <span className="ss-panel-title">{t.panelTitle}</span>
+        <button type="button" className="ss-panel-close" aria-label={t.close} onClick={onClose}>
           ✕
         </button>
       </div>
 
-      <div className="ss-quick-grid" role="radiogroup" aria-label={strings.panelTitle}>
+      <div className="ss-quick-grid" role="radiogroup" aria-label={t.panelTitle}>
         {quickOptions.map((option) => {
           const key = keyOf(option);
           const active = selected === key || (option.kind === 'custom' && selected === 'custom');
@@ -226,7 +233,7 @@ export function SchedPanel({
           <input
             type="date"
             className="ss-input"
-            aria-label={strings.dateLabel}
+            aria-label={t.dateLabel}
             value={customDate}
             onChange={(event) => {
               if (event.target.value) setCustomDate(event.target.value);
@@ -235,7 +242,7 @@ export function SchedPanel({
           <input
             type="time"
             className="ss-input"
-            aria-label={strings.timeLabel}
+            aria-label={t.timeLabel}
             value={customTime}
             onChange={(event) => {
               if (event.target.value) setCustomTime(event.target.value);
@@ -251,7 +258,7 @@ export function SchedPanel({
       {error !== null && <div className="ss-error" role="alert" style={{ marginTop: 6 }}>{error}</div>}
 
       <div className="ss-tasklist-head">
-        <span className="ss-hint">{strings.taskListTitle}{schedules.length > 0 ? ` (${schedules.length})` : ''}</span>
+        <span className="ss-hint">{t.taskListTitle}{schedules.length > 0 ? ` (${schedules.length})` : ''}</span>
       </div>
       <TaskList
         items={schedules}
@@ -260,6 +267,8 @@ export function SchedPanel({
         cancellingIds={cancelling}
         onDelete={handleDelete}
         timeZone={timeZone}
+        t={t}
+        lang={lang}
       />
 
       <div className="ss-footer">
@@ -270,13 +279,13 @@ export function SchedPanel({
           onClick={() => void handleConfirm()}
         >
           {busy
-            ? strings.sending
+            ? t.sending
             : target !== null
-              ? format(strings.confirmAdd, { time: formatAbsolute(target.epoch, timeZone) })
-              : strings.confirmAddNoTime}
+              ? format(t.confirmAdd, { time: formatAbsolute(target.epoch, timeZone, lang) })
+              : t.confirmAddNoTime}
         </button>
       </div>
-      {promptEmpty && <div className="ss-hint" style={{ marginTop: 6 }}>{strings.promptFromDraft}</div>}
+      {promptEmpty && <div className="ss-hint" style={{ marginTop: 6 }}>{t.promptFromDraft}</div>}
     </div>
   );
 }

@@ -4,9 +4,9 @@
  * @module dsh-session-scheduler/client/components/TaskList
  */
 import type { JSX } from 'react';
-import { formatAbsolute, formatRelative } from '../../time-utils.js';
+import { formatAbsolute, formatRelative, type TextLocale } from '../../time-utils.js';
 import type { ClientSchedule } from '../types.js';
-import { strings } from '../strings.js';
+import type { SchedStrings } from '../strings.js';
 
 export interface TaskListProps {
   items: readonly ClientSchedule[];
@@ -19,6 +19,10 @@ export interface TaskListProps {
   /** 删除单个。 */
   onDelete: (id: string) => void;
   timeZone: string;
+  /** 文案字典（跟随宿主 locale）。 */
+  t: SchedStrings;
+  /** 当前语言 id（时间文案用）。 */
+  lang: TextLocale;
 }
 
 /** 由 scheduledAt 推导状态。 */
@@ -26,9 +30,9 @@ export function scheduleStateOf(item: ClientSchedule, now: number): 'scheduled' 
   return Date.parse(item.scheduled_at) <= now ? 'overdue' : 'scheduled';
 }
 
-export function TaskList({ items, now, deliveredIds, cancellingIds, onDelete, timeZone }: TaskListProps): JSX.Element {
+export function TaskList({ items, now, deliveredIds, cancellingIds, onDelete, timeZone, t, lang }: TaskListProps): JSX.Element {
   if (items.length === 0) {
-    return <div className="ss-empty" data-ss-empty="">{strings.emptyTasks}</div>;
+    return <div className="ss-empty" data-ss-empty="">{t.emptyTasks}</div>;
   }
   return (
     <ul className="ss-tasks" data-ss-tasks="">
@@ -45,7 +49,7 @@ export function TaskList({ items, now, deliveredIds, cancellingIds, onDelete, ti
             <span className={`ss-dot ${dotState}`} aria-hidden="true" />
             <span className="ss-task-main">
               <span className="ss-task-time">
-                {formatAbsolute(Date.parse(item.scheduled_at), timeZone)} · {formatRelative(Date.parse(item.scheduled_at), now)}
+                {formatAbsolute(Date.parse(item.scheduled_at), timeZone, lang)} · {formatRelative(Date.parse(item.scheduled_at), now, lang)}
               </span>
               <br />
               <span className="ss-task-prompt">{item.prompt}</span>
@@ -53,8 +57,8 @@ export function TaskList({ items, now, deliveredIds, cancellingIds, onDelete, ti
             <button
               type="button"
               className="ss-task-del"
-              title={strings.deleteTask}
-              aria-label={`${strings.deleteTask}：${item.prompt}`}
+              title={t.deleteTask}
+              aria-label={`${t.deleteTask}: ${item.prompt}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onDelete(item.id);

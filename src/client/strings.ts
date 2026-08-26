@@ -1,9 +1,14 @@
 /**
- * 客户端微文案字典（v1 中文优先）。
+ * 客户端微文案字典（双语：跟随宿主 DSH 的 locale 设置）。
+ *
+ * 语言解析：`useSchedT(locale)` 读取宿主 locale 服务的 active id（zh/en），
+ * 从这里取对应字典；locale 服务缺失或 id 未收录时回退中文（v1 默认语言）。
  * @module dsh-session-scheduler/client/strings
  */
 
-export const strings = {
+export type SchedLocaleId = 'zh' | 'en';
+
+const zh = {
   /** 输入框按钮 tooltip */
   buttonSchedule: '定时发送',
   /** 面板标题 */
@@ -30,6 +35,8 @@ export const strings = {
   editCancel: '取消',
   editErrEmpty: '内容不能为空',
   editErrFailed: '修改失败：{message}',
+  editErrNotAccepted: '命令未被受理',
+  editErrCommandFailed: '命令失败',
   /** 精准倒计时（dock 行 + 折叠头） */
   countdownLeft: '剩',
   dueAnyMoment: '即将发送',
@@ -47,7 +54,50 @@ export const strings = {
   errDeleteFailed: '删除失败：{message}',
 } as const;
 
-export type Strings = typeof strings;
+const en: { [K in keyof typeof zh]: string } = {
+  buttonSchedule: 'Schedule send',
+  panelTitle: 'Scheduled reminders',
+  close: 'Close',
+  quick10m: 'In 10 minutes',
+  quick1h: 'In 1 hour',
+  quickSmart: 'Work hours',
+  quickCustom: 'Custom…',
+  dateLabel: 'Date',
+  timeLabel: 'Time',
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+  taskListTitle: 'Scheduled',
+  emptyTasks: 'No scheduled reminders',
+  deleteTask: 'Delete',
+  editTask: 'Edit reminder',
+  editSave: 'Save',
+  editCancel: 'Cancel',
+  editErrEmpty: 'Reminder content cannot be empty',
+  editErrFailed: 'Edit failed: {message}',
+  editErrNotAccepted: 'Command was not accepted',
+  editErrCommandFailed: 'Command failed',
+  countdownLeft: 'in',
+  dueAnyMoment: 'Sending soon',
+  sending: 'Sending…',
+  confirmAdd: 'Add · send at {time}',
+  confirmAddNoTime: 'Pick a send time',
+  promptFromDraft: 'The composer draft will be used as the reminder content',
+  errPromptEmpty: 'Type something in the composer first',
+  errTimePast: 'Pick a future time',
+  errCreateFailed: 'Create failed: {message}',
+  errDeleteFailed: 'Delete failed: {message}',
+};
+
+/** 单语言文案字典类型（宽化为 string，zh/en 通用）。 */
+export type SchedStrings = { [K in keyof typeof zh]: string };
+
+/** 全部 locale 字典（键集一致，由 en 的映射类型保证）。 */
+export const schedDicts: Record<SchedLocaleId, SchedStrings> = { zh, en };
+
+/** 按 locale id 取字典；未收录 id 回退中文。 */
+export function dictFor(localeId: string | undefined): SchedStrings {
+  return localeId === 'en' ? schedDicts.en : schedDicts.zh;
+}
 
 /** 把 {time} / {message} 类占位符替换为参数。 */
 export function format(template: string, params: Record<string, string | number>): string {
