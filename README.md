@@ -1,6 +1,12 @@
+<div align="center">
+
+<img src="docs/logo.png?v=1" width="128" alt="dsh-session-scheduler logo"/>
+
 # dsh-session-scheduler — 会话内定时消息插件
 
 **中文** | [English](./README.en.md)
+
+</div>
 
 > 在 [`@deepseek-ai/dsh-schedule`](https://www.npmjs.com/package/@deepseek-ai/dsh-schedule) 底层引擎之上，提供**用户可直接操作的 GUI + 用户工具**，实现「关网页也能准时触发的**当前会话内**定时提醒」。
 
