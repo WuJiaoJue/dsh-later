@@ -1,6 +1,12 @@
+<div align="center">
+
+<img src="docs/logo.png?v=1" width="128" alt="dsh-session-scheduler logo"/>
+
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
 [中文](./README.md) | **English**
+
+</div>
 
 > Built on top of the [`@deepseek-ai/dsh-schedule`](https://www.npmjs.com/package/@deepseek-ai/dsh-schedule) engine, this plugin adds a **user-facing GUI + user tools** that deliver **in-session scheduled reminders which fire on time even after you close the browser**.
 
