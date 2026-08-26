@@ -1,5 +1,7 @@
 # dsh-session-scheduler — 会话内定时消息插件
 
+**中文** | [English](./README.en.md)
+
 > 在 [`@deepseek-ai/dsh-schedule`](https://www.npmjs.com/package/@deepseek-ai/dsh-schedule) 底层引擎之上，提供**用户可直接操作的 GUI + 用户工具**，实现「关网页也能准时触发的**当前会话内**定时提醒」。
 
 DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户无法直接操作；`dsh-sleep-send` 存 localStorage、关网页即死；Host Automations 创建的是新会话。本插件补齐「用户自己设、当前对话收到、服务端驱动、跨设备」这一格。
