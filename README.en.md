@@ -29,6 +29,18 @@ DSH's existing scheduling capabilities each miss a piece: `dsh-schedule` is expo
 
 ---
 
+## Screenshots
+
+| ⏰ Scheduling panel | Pending dock (countdown / ✎ edit / ✕ cancel) |
+|---|---|
+| <img src="docs/screenshot-panel.png" width="420"/> | <img src="docs/screenshot-dock.png" width="420"/> |
+
+**A real due-time firing**: a `Context injection · Scheduled reminder · HH:MM · content` notice lands in the conversation and the model responds immediately (fires even with the page closed):
+
+<img src="docs/screenshot-fired.png" width="640"/>
+
+---
+
 ## Mental model (read this first — avoid the "scheduled vs. delayed send" trap)
 
 | Action | Timing | Who "speaks" | GUI presentation | Notes |

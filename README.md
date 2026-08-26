@@ -29,6 +29,18 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 ---
 
+## 界面截图
+
+| ⏰ 定时面板 | 待发送 dock（倒计时 / ✎ 改内容 / ✕ 取消） |
+|---|---|
+| <img src="docs/screenshot-panel.png" width="420"/> | <img src="docs/screenshot-dock.png" width="420"/> |
+
+**到期真实触发**：`Context injection · 定时提醒 · HH:MM · 内容` 注入对话，模型即时响应（关网页也照常触发）：
+
+<img src="docs/screenshot-fired.png" width="640"/>
+
+---
+
 ## 心智模型（先看这个，避免踩「定时 vs 延迟发送」的坑）
 
 | 动作 | 时机 | 谁“说话” | GUI 呈现 | 说明 |
