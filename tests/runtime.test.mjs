@@ -30,11 +30,44 @@ test('决策：无到期 → wait 返回下一个目标', () => {
   if (d.kind === 'wait') assert.equal(d.target, Date.parse('2999-01-01T08:00:00.000Z'));
 });
 
-test('决策：到期一次性 → one-shot', () => {
+test('决策：到期一次性 → one-shot（最早优先）', () => {
   const now = Date.parse('2999-01-01T09:00:00.000Z');
   const d = dueUserDecision([S({ id: 'a', scheduledAt: '2999-01-01T08:30:00.000Z' }), S({ id: 'b', scheduledAt: '2999-01-01T08:00:00.000Z' })], now);
   assert.equal(d.kind, 'one-shot');
-  if (d.kind === 'one-shot') assert.equal(d.record.id, 'b'); // 最早到期优先
+  if (d.kind === 'one-shot') {
+    assert.equal(d.records.length, 2); // P1-5：积压一次性合并为同形态批次
+    assert.equal(d.records[0].id, 'b'); // 最早到期在前
+    assert.equal(d.delivery, 'context');
+  }
+});
+
+test('决策：P1-5 积压批次按投递形态分组，取最早组', () => {
+  const now = Date.parse('2999-01-01T09:00:00.000Z');
+  const records = [
+    S({ id: 'ctx-late', scheduledAt: '2999-01-01T08:40:00.000Z' }),
+    S({ id: 'user-early', scheduledAt: '2999-01-01T08:00:00.000Z' }),
+    S({ id: 'user-late', scheduledAt: '2999-01-01T08:20:00.000Z' }),
+    S({ id: 'ctx-early', scheduledAt: '2999-01-01T07:50:00.000Z' }),
+  ];
+  const delivery = new Map([['user-early', 'user'], ['user-late', 'user']]);
+  const d = dueUserDecision(records, now, delivery);
+  assert.equal(d.kind, 'one-shot');
+  if (d.kind === 'one-shot') {
+    // context 组最早（07:50 < user 组 08:00）→ 本轮只派发 context 组
+    assert.equal(d.delivery, 'context');
+    assert.deepEqual(d.records.map((r) => r.id), ['ctx-early', 'ctx-late']);
+  }
+  // 反之 user 组更早时派发 user 组
+  const d2 = dueUserDecision(
+    [S({ id: 'ctx', scheduledAt: '2999-01-01T08:30:00.000Z' }), S({ id: 'u', scheduledAt: '2999-01-01T08:10:00.000Z' })],
+    now,
+    new Map([['u', 'user']]),
+  );
+  assert.equal(d2.kind, 'one-shot');
+  if (d2.kind === 'one-shot') {
+    assert.equal(d2.delivery, 'user');
+    assert.deepEqual(d2.records.map((r) => r.id), ['u']);
+  }
 });
 
 test('决策：到期固定间隔 → every 批次', () => {
@@ -155,4 +188,44 @@ test('runtime：nothing 到期时不注入、不写 dispatch', async () => {
   // 只武装了未来 timer，没有 dispatch
   const dispatch = session.events.filter((e) => e.type === 'schedule/change' && e.data.operation === 'dispatch');
   assert.equal(dispatch.length, 0);
+});
+
+test('runtime：P1-5 积压多条一次性合并为一条批次注入', async () => {
+  // 三条在首次 drive 前就已同时过期（模拟关网页期间积压）；x1 最早
+  const base = Date.now() - 1000;
+  const mk = (id, offset) => S_AT(id, new Date(base + offset).toISOString());
+  const session = new FakeSession(
+    ['x1', 'x2', 'x3'].flatMap((id, index) => [
+      {
+        type: 'schedule/change',
+        seq: index * 2,
+        time: 0,
+        data: { version: 1, operation: 'create', schedule: mk(id, index * 100) },
+      },
+      {
+        type: 'session-scheduler/user-schedule',
+        seq: index * 2 + 1,
+        time: 0,
+        data: { version: 1, operation: 'add', id },
+      },
+    ]),
+  );
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  runtime.requestDrive();
+  await new Promise((r) => setTimeout(r, 400));
+  await runtime.dispose();
+
+  // 一条批次消息，而非三条刷屏
+  assert.equal(agent.messages.length, 1);
+  assert.match(agent.messages[0].content[0].text, /\[SCHEDULE REMINDER BATCH\]/);
+  const payload = JSON.parse(
+    /reminders_json: (.+)/.exec(agent.messages[0].content[0].text)[1],
+  );
+  assert.deepEqual(payload.map((entry) => entry.schedule_id), ['x1', 'x2', 'x3']);
+  // 三条 dispatch 全部落日志；fold 后不再 active（去重语义不变）
+  const dispatch = session.events.filter((e) => e.type === 'schedule/change' && e.data.operation === 'dispatch');
+  assert.equal(dispatch.length, 3);
+  const folded = foldScheduleEvents(session.events, 0);
+  assert.equal(folded.active.length, 0);
 });

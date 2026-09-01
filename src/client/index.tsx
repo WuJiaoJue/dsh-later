@@ -59,11 +59,20 @@ function apply(ctx: Context): void {
       zh: {
         title: '定时提醒',
         description: '配置会话内定时提醒的参数。',
+        pendingBadge: '未保存',
+        readOnly: '本部署的设置为只读。',
         maxSchedulesLabel: '单会话任务上限',
         maxSchedulesHint: '单个会话内允许创建的最大定时任务数量。',
+        smartWindowHint: '用于「工作时间」芯片与智能模式自动排期。',
+        workStartLabel: '工作时间开始',
+        workEndLabel: '工作时间结束（晚间开始）',
+        lunchStartLabel: '午休开始',
+        lunchEndLabel: '午休结束',
+        eveningEndLabel: '夜间静默起点',
         overriddenLabel: '已覆盖',
         resetLabel: '重置',
         invalidLabel: '请输入有效的数字。',
+        invalidTimeLabel: '请使用 HH:mm 24 小时制时间。',
         save: '保存',
         saving: '保存中…',
         discard: '放弃',
@@ -74,11 +83,20 @@ function apply(ctx: Context): void {
       en: {
         title: 'Session Scheduler',
         description: 'Configure in-session scheduled reminders.',
+        pendingBadge: 'Unsaved',
+        readOnly: 'Settings for this deployment are read-only.',
         maxSchedulesLabel: 'Max schedules per session',
         maxSchedulesHint: 'Maximum number of scheduled reminders allowed per session.',
+        smartWindowHint: 'Used by the Work-hours chip and smart auto-scheduling.',
+        workStartLabel: 'Work day start',
+        workEndLabel: 'Work day end (evening start)',
+        lunchStartLabel: 'Lunch break start',
+        lunchEndLabel: 'Lunch break end',
+        eveningEndLabel: 'Night quiet starts at',
         overriddenLabel: 'Overridden',
         resetLabel: 'Reset',
         invalidLabel: 'Please enter a valid number.',
+        invalidTimeLabel: 'Use 24-hour HH:mm format.',
         save: 'Save',
         saving: 'Saving…',
         discard: 'Discard',
@@ -102,6 +120,10 @@ function apply(ctx: Context): void {
     }
   };
 
+  // 绑定插件设置 namespace → wire scope，供按钮/面板订阅智能时段配置。
+  // 设置页保存后 SchedPanel 芯片立即重算，无须刷新会话。
+  const schedulerScope = settingsScope === undefined ? undefined : settingsScope.bind({ namespace: NS });
+
   ctx.slots.inject(
     INPUT_RIGHT_SLOT,
     () =>
@@ -110,7 +132,7 @@ function apply(ctx: Context): void {
           name: INPUT_RIGHT_SLOT,
           id: 'session-scheduler',
           order: 50,
-          inject: () => ({ callCommand, locale } as SchedButtonInjected),
+          inject: () => ({ callCommand, locale, schedulerScope } as SchedButtonInjected),
         },
         SchedButton,
       ),

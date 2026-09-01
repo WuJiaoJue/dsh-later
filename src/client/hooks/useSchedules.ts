@@ -22,6 +22,7 @@ import {
   removePending,
   type PendingSchedule,
 } from '../local-store.js';
+import { CLIENT_ERR } from '../strings.js';
 
 /** 应用层注入的调用能力。 */
 export interface UseSchedulesInject {
@@ -166,7 +167,8 @@ export function useSchedules(inject: UseSchedulesInject): UseSchedulesResult {
 
   const handleCreate = useCallback(async (inputPayload: CreateCommandPayload): Promise<void> => {
     if (!sessionId) {
-      throw new Error('当前无会话');
+      // 抛稳定令牌（P1-7）：UI 层按当前 locale 翻译，hook 不依赖 locale 服务。
+      throw new Error(CLIENT_ERR.NO_SESSION);
     }
     setBusy(true);
     try {
@@ -175,7 +177,7 @@ export function useSchedules(inject: UseSchedulesInject): UseSchedulesResult {
         // 命令未被受理（网络/宿主异常）→ 降级暂存本地
         appendPending(inputPayload);
         setPendingSync((prev) => [...prev, { clientSeq: Date.now(), createdAt: Date.now(), payload: inputPayload }]);
-        throw new Error('命令未被受理，已暂存本地');
+        throw new Error(CLIENT_ERR.NOT_ACCEPTED);
       }
     } finally {
       setBusy(false);

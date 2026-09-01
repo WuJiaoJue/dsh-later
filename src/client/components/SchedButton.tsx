@@ -12,6 +12,7 @@ import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import type { ClientSchedule, CreateCommandPayload } from '../types.js';
 import { SchedPanel } from './SchedPanel.js';
 import { useSchedules } from '../hooks/useSchedules.js';
+import { useSchedulerSettings, type SchedulerSettingsScopeLike } from '../hooks/useSchedulerSettings.js';
 
 /** 应用层注入的调用能力。 */
 export interface SchedButtonInjected {
@@ -19,6 +20,8 @@ export interface SchedButtonInjected {
   callCommand: (sessionId: string, line: string) => Promise<boolean>;
   /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
   locale?: LocaleFaceLike;
+  /** 插件设置 scope（设置页保存后智能时段即时生效；缺失回退默认）。 */
+  schedulerScope?: SchedulerSettingsScopeLike;
 }
 
 /** 会话作用域插槽条目收到的标准 props + 注入。 */
@@ -36,8 +39,9 @@ export interface SchedButtonProps extends SchedButtonInjected {
 }
 
 export function SchedButton(props: SchedButtonProps): JSX.Element {
-  const { callCommand, sessionId, inputActions, input, useProjection, useInput, locale } = props;
+  const { callCommand, sessionId, inputActions, input, useProjection, useInput, locale, schedulerScope } = props;
   const { lang, t } = useSchedT(locale);
+  const { smartWindow } = useSchedulerSettings(schedulerScope);
   const [open, setOpen] = useState(false);
 
   const {
@@ -112,6 +116,7 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
             onCreate={handleCreateWithErrorBoundary}
             onDelete={(id) => void handleDelete(id)}
             bottom={anchorBottom}
+            smartWindow={smartWindow}
           />
         </>
       )}

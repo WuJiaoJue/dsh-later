@@ -10,11 +10,13 @@ import {
   epochFromLocal,
   floorToMinute,
   hhmmToMinutes,
+  isValidHhmm,
   isValidWindow,
   localFieldsOf,
   minutesToHhmm,
   nextSmartAt,
   nextSmartTarget,
+  sanitizeSmartWindowConfig,
 } from '../lib/smart-window.js';
 
 const TZ = 'Asia/Shanghai';
@@ -84,4 +86,36 @@ test('floorToMinute', () => {
   const now = Date.parse('2026-08-19T07:00:42.500Z');
   assert.equal(floorToMinute(now), Date.parse('2026-08-19T07:00:00.000Z'));
   assert.equal(floorToMinute(Math.floor(now / MINUTE_MS) * MINUTE_MS), Math.floor(now / MINUTE_MS) * MINUTE_MS);
+});
+
+// ─── sanitizeSmartWindowConfig：设置面板输入清洗 ─────────────────────
+
+test('sanitizeSmartWindowConfig：全合法值透传', () => {
+  const got = sanitizeSmartWindowConfig({ workStart: '08:30', workEnd: '17:30', lunchStart: '12:00', lunchEnd: '13:30', eveningEnd: '21:30' });
+  assert.equal(got.workStart, '08:30');
+  assert.equal(got.eveningEnd, '21:30');
+});
+
+test('sanitizeSmartWindowConfig：非法/缺失字段逐项回落默认', () => {
+  const got = sanitizeSmartWindowConfig({ workStart: '25:00', lunchEnd: '下午一点', eveningEnd: undefined });
+  assert.equal(got.workStart, DEFAULT_SMART_WINDOW.workStart);
+  assert.equal(got.lunchEnd, DEFAULT_SMART_WINDOW.lunchEnd);
+  assert.equal(got.eveningEnd, DEFAULT_SMART_WINDOW.eveningEnd);
+  // 合法的同批字段仍保留
+  assert.equal(got.workEnd, DEFAULT_SMART_WINDOW.workEnd);
+  assert.equal(got.lunchStart, DEFAULT_SMART_WINDOW.lunchStart);
+});
+
+test('sanitizeSmartWindowConfig：空/null 输入返回全默认', () => {
+  assert.deepEqual(sanitizeSmartWindowConfig(undefined), DEFAULT_SMART_WINDOW);
+  assert.deepEqual(sanitizeSmartWindowConfig(null), DEFAULT_SMART_WINDOW);
+});
+
+test('isValidHhmm：边界与格式校验', () => {
+  assert.equal(isValidHhmm('00:00'), true);
+  assert.equal(isValidHhmm('23:59'), true);
+  assert.equal(isValidHhmm('24:00'), false);
+  assert.equal(isValidHhmm('9:00'), false); // 必须两位
+  assert.equal(isValidHhmm('foo'), false);
+  assert.equal(isValidHhmm(900), false);
 });

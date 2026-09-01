@@ -368,12 +368,25 @@ export function parseScheduleSpec(spec: string, now: number, timeZone: string): 
   return { ok: true, kind: 'at', at: resolved.target.at, epoch: resolved.target.epoch };
 }
 
-/** 命令工厂：返回三个命令定义。 */
+/** 命令工厂：返回三个命令定义。
+ *
+ * `getSettings` 支持传数字（静态，兼容旧签名）、返回 `{maxSchedules}` 的 getter，
+ * 或 `() => number` getter——传 getter 时每次调用读取设置页的**实时**上限
+ * （设置保存后即时生效，按需 scope.get()，与 dsh-smooth-stream 一致）。
+ */
 export function userScheduleCommands(
   ctx: Context,
-  maxSchedules: number = DEFAULT_MAX_SCHEDULES,
+  getSettings: number | (() => number) | (() => { maxSchedules: number }) = DEFAULT_MAX_SCHEDULES,
   onUserChange?: UserChangeNotifier,
 ): CommandDefinition[] {
+  const resolveMaxSchedules = (): number => {
+    if (typeof getSettings === 'function') {
+      const value = getSettings();
+      if (typeof value === 'number') return value;
+      return value?.maxSchedules ?? DEFAULT_MAX_SCHEDULES;
+    }
+    return getSettings;
+  };
   const create: CommandDefinition = {
     name: `${PREFIX}-create`,
     description: '创建一条会话内定时提醒（GUI 内部通道）。',
@@ -381,7 +394,7 @@ export function userScheduleCommands(
     handler: async (invocation: CommandInvocation): Promise<CommandResult> => {
       const parsed = parsePayload(invocation.rawInput);
       if (!parsed.ok) return renderError(parsed.text);
-      const result = await userScheduleCreate(parsed.value, invocation.agent, ctx, maxSchedules);
+      const result = await userScheduleCreate(parsed.value, invocation.agent, ctx, resolveMaxSchedules());
       if (!result.ok) {
         return { kind: 'error', text: `${result.code}: ${result.message}` };
       }
@@ -465,11 +478,14 @@ export function userScheduleCommands(
         parsed.target.kind === 'after'
           ? { prompt: content, after_seconds: parsed.target.afterSeconds, time_zone: timeZone }
           : { prompt: content, at: parsed.target.at, time_zone: timeZone };
+      // P0-1：delivery 只能经可信通道参数显式声明（人类输入的 /later），
+      // 不再注入原始载荷——通用载荷字段一律无效，防止任何通道夹带绕过注入防护。
       const result = await userScheduleCreate(
-        delivery === 'user' ? { ...input, delivery } : input,
+        input,
         invocation.agent,
         ctx,
-        maxSchedules,
+        resolveMaxSchedules(),
+        { trustedDelivery: delivery },
       );
       if (!result.ok) {
         return { kind: 'error', text: `${result.code}: ${result.message}` };
@@ -525,10 +541,10 @@ export function userScheduleCommands(
 /** 注册三个命令，返回统一 disposer。 */
 export function registerUserScheduleCommands(
   ctx: Context,
-  maxSchedules: number = DEFAULT_MAX_SCHEDULES,
+  getSettings: number | (() => number) | (() => { maxSchedules: number }) = DEFAULT_MAX_SCHEDULES,
   onUserChange?: UserChangeNotifier,
 ): () => void {
-  const disposers = userScheduleCommands(ctx, maxSchedules, onUserChange).map((definition) => {
+  const disposers = userScheduleCommands(ctx, getSettings, onUserChange).map((definition) => {
     try {
       return ctx.commands.register(definition);
     } catch (error) {

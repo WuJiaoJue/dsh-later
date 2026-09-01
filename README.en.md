@@ -32,13 +32,17 @@ DSH's existing scheduling capabilities each miss a piece: `dsh-schedule` is expo
 
 ## Screenshots
 
-| ⏰ Scheduling panel | Pending dock (countdown / ✎ edit / ✕ cancel) |
-|---|---|
-| <img src="docs/screenshot-panel.png" width="420"/> | <img src="docs/screenshot-dock.png" width="420"/> |
+**⏰ Scheduling panel** — quick slots / custom time / pending list:
 
-**A real due-time firing**: a `Context injection · Scheduled reminder · HH:MM · content` notice lands in the conversation and the model responds immediately (fires even with the page closed):
+<img src="docs/screenshot-panel-en.png" width="340" alt="Scheduled reminders panel"/>
 
-<img src="docs/screenshot-fired.png" width="640"/>
+**Pending dock** — countdown bar above the input (✎ inline edit / ✕ cancel; the input sits right below):
+
+<img src="docs/screenshot-dock.png" width="700" alt="Pending dock and input"/>
+
+**A real due-time firing** — a `⏰ Reminder due` notice lands in the conversation when the time comes (fires even with the page closed):
+
+<img src="docs/screenshot-fired.png" width="560" alt="Due-time injection"/>
 
 ---
 

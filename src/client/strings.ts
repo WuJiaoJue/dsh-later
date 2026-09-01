@@ -49,9 +49,19 @@ const zh = {
   promptFromDraft: '将以输入框内容作为提醒内容',
   /** 错误提示 */
   errPromptEmpty: '请先在输入框输入内容',
+  errPromptTooLong: '提醒内容不能超过 1000 字符',
   errTimePast: '请选择未来的时间',
   errCreateFailed: '创建失败：{message}',
   errDeleteFailed: '删除失败：{message}',
+  /** 客户端本地错误（hook 抛令牌，UI 按当前语言翻译） */
+  errNoSession: '当前无会话',
+  errNotAcceptedStashed: '命令未被受理，已暂存本地',
+} as const;
+
+/** 客户端本地错误令牌：hook 层抛出、组件层经字典翻译（避免 hook 依赖 locale）。 */
+export const CLIENT_ERR = {
+  NO_SESSION: 'SS_ERR_NO_SESSION',
+  NOT_ACCEPTED: 'SS_ERR_NOT_ACCEPTED',
 } as const;
 
 const en: { [K in keyof typeof zh]: string } = {
@@ -83,9 +93,12 @@ const en: { [K in keyof typeof zh]: string } = {
   confirmAddNoTime: 'Pick a send time',
   promptFromDraft: 'The composer draft will be used as the reminder content',
   errPromptEmpty: 'Type something in the composer first',
+  errPromptTooLong: 'Reminder content cannot exceed 1000 characters',
   errTimePast: 'Pick a future time',
   errCreateFailed: 'Create failed: {message}',
   errDeleteFailed: 'Delete failed: {message}',
+  errNoSession: 'No active session',
+  errNotAcceptedStashed: 'Command was not accepted; saved locally',
 };
 
 /** 单语言文案字典类型（宽化为 string，zh/en 通用）。 */

@@ -28,6 +28,7 @@ import {
 import type { ScheduleRecord, ScheduleView } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT } from './domain.js';
 import type { UserScheduleOwnedChange, UserScheduleDelivery } from './domain.js';
+import { detectTimeZone } from './time-utils.js';
 
 /** 单 session 用户任务上限（PRD：防滥用）。 */
 export const DEFAULT_MAX_SCHEDULES = 100;
@@ -45,6 +46,7 @@ export type UserScheduleErrorCode =
   | 'frequency_too_high'
   | 'invalid_rule'
   | 'schedule_not_found'
+  | 'already_overdue'
   | 'quota_exceeded'
   | 'persistence_uncertain'
   | 'internal_error';
@@ -110,10 +112,11 @@ export function validateCreateInput(
       message: 'after_seconds / at / every_seconds 必须且只能提供一项。',
     };
   }
-  const time_zone = typeof args['time_zone'] === 'string' ? (args['time_zone'] as string) : '';
-  if (time_zone.length === 0) {
-    return { ok: false, code: 'invalid_time_zone', message: 'time_zone 为必填项，请提供合法的 IANA 时区。' };
-  }
+  const time_zone =
+    typeof args['time_zone'] === 'string' && (args['time_zone'] as string).length > 0
+      ? (args['time_zone'] as string)
+      : // P1-8：时区可选——缺省用检测到的会话时区，降低模型/客户端漏传导致的失败。
+        detectTimeZone();
   if (!isValidIanaZone(time_zone)) {
     return { ok: false, code: 'invalid_time_zone', message: 'time_zone 必须是合法的 IANA 时区。' };
   }
@@ -189,13 +192,48 @@ export function foldOwnedDelivery(
   return map;
 }
 
-/** 从 create 输入里读取可选 delivery（仅命令/内部通道可传，工具不透出）。 */
-function readDelivery(input: unknown): UserScheduleDelivery {
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-    const raw = (input as Record<string, unknown>)['delivery'];
-    return raw === 'user' ? 'user' : 'context';
+/**
+ * 会话级 fold 缓存（P1-6）：事件日志只增不改（事件溯源），
+ * 按「数组身份 + 长度」判定命中——append 原地 push 使长度变化即失效；
+ * 整体换数组则身份不同也失效。两种实现风格下都安全。
+ *
+ * 消除热路径（每次 drive / 每次工具调用）对全量日志的重复 O(n) 扫描。
+ */
+export interface UserFoldState {
+  readonly folded: ReturnType<typeof foldScheduleEvents>;
+  readonly owned: ReadonlySet<string>;
+  readonly delivery: ReadonlyMap<string, UserScheduleDelivery>;
+}
+
+interface FoldCacheEntry {
+  readonly events: readonly SessionEvent[];
+  readonly length: number;
+  readonly seedLength: number;
+  readonly state: UserFoldState;
+}
+
+const foldCache = new WeakMap<object, FoldCacheEntry>();
+
+/** fold 当前会话的完整用户调度状态（带缓存；调用方不得变更返回值）。 */
+export function foldUserState(session: Session): UserFoldState {
+  const events = session.events;
+  const seedLength = session.header.seedLength ?? 0;
+  const cached = foldCache.get(session);
+  if (
+    cached !== undefined &&
+    cached.events === events &&
+    cached.length === events.length &&
+    cached.seedLength === seedLength
+  ) {
+    return cached.state;
   }
-  return 'context';
+  const state: UserFoldState = {
+    folded: foldScheduleEvents(events, seedLength),
+    owned: foldOwnedIds(events),
+    delivery: foldOwnedDelivery(events),
+  };
+  foldCache.set(session, { events, length: events.length, seedLength, state });
+  return state;
 }
 
 /** 稳定内部错误（不透出异常细节）。 */
@@ -289,24 +327,42 @@ function buildScheduleRecord(input: UserScheduleCreateInput, id: ReturnType<type
   return createEveryScheduleRecord(id, input.prompt, input.every_seconds as number, now);
 }
 
+/**
+ * `user_schedule_create` 的可信通道选项。
+ *
+ * 安全边界（P0-1）：`delivery:'user'`（到点以用户身份代发，绕过注入防护）只能
+ * 由人类显式输入的 `/later` 命令经 `trustedDelivery` **显式声明**——原始输入里的
+ * 同名字段一律被忽略。模型工具与 GUI 面板通道不传该选项，永远得到安全的
+ * `context` 注入形态；即使模型在工具参数里夹带 `delivery:'user'` 也无效。
+ */
+export interface UserScheduleCreateOptions {
+  /** 可信通道显式声明的投递形态；未提供或非 'user' 一律按安全默认 'context'。 */
+  readonly trustedDelivery?: UserScheduleDelivery;
+}
+
 /** `user_schedule_create` 核心实现。 */
 export async function userScheduleCreate(
   input: unknown,
   agent: Agent,
   ctx: Context,
   maxSchedules: number = DEFAULT_MAX_SCHEDULES,
+  options?: UserScheduleCreateOptions,
 ): Promise<UserScheduleCreateResult> {
   const validated = validateCreateInput(input);
   if (!validated.ok) return validated;
+  // 只认可信通道显式声明的形态；输入载荷中的 delivery 字段不具任何效力。
+  const trustedDelivery = options?.trustedDelivery === 'user' ? 'user' : 'context';
   return runUserScheduleTransaction(agent, async () => {
     const now = Date.now();
     let folded;
+    let owned;
     try {
-      folded = foldScheduleEvents(agent.session.events, agent.session.header.seedLength ?? 0);
+      const state = foldUserState(agent.session);
+      folded = state.folded;
+      owned = state.owned;
     } catch {
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
-    const owned = foldOwnedIds(agent.session.events);
     const activeCount = folded.active.filter((record) => owned.has(record.id)).length;
     if (activeCount >= maxSchedules) {
       return {
@@ -332,7 +388,7 @@ export async function userScheduleCreate(
         version: 1,
         operation: 'add',
         id,
-        ...(readDelivery(input) === 'user' ? { delivery: 'user' as const } : {}),
+        ...(trustedDelivery === 'user' ? { delivery: 'user' as const } : {}),
       });
     } catch {
       return internalError();
@@ -353,12 +409,14 @@ export async function userScheduleList(
 ): Promise<UserScheduleListResult> {
   return runUserScheduleTransaction(agent, async () => {
     let folded;
+    let owned;
     try {
-      folded = foldScheduleEvents(agent.session.events, agent.session.header.seedLength ?? 0);
+      const state = foldUserState(agent.session);
+      folded = state.folded;
+      owned = state.owned;
     } catch {
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
-    const owned = foldOwnedIds(agent.session.events);
     const now = Date.now();
     const schedules = folded.active
       .filter((record) => owned.has(record.id))
@@ -380,7 +438,7 @@ export async function userScheduleDelete(
   return runUserScheduleTransaction(agent, async () => {
     let folded;
     try {
-      folded = foldScheduleEvents(agent.session.events, agent.session.header.seedLength ?? 0);
+      folded = foldUserState(agent.session).folded;
     } catch {
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
@@ -429,14 +487,28 @@ export async function userScheduleEditPrompt(
     let folded;
     let deliveries: ReadonlyMap<string, UserScheduleDelivery>;
     try {
-      folded = foldScheduleEvents(agent.session.events, agent.session.header.seedLength ?? 0);
-      deliveries = foldOwnedDelivery(agent.session.events);
+      const state = foldUserState(agent.session);
+      folded = state.folded;
+      deliveries = state.delivery;
     } catch {
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
     const existing = folded.active.find((record) => record.id === scheduleId);
     if (existing === undefined) {
       return { ok: false, code: 'schedule_not_found', message: `未找到定时任务 ${scheduleId}。` };
+    }
+    // P0-4：已过期（overdue）的 at 任务禁止改内容——「保留原时刻」会让新记录
+    // 一落日志就处于到期状态，下一次 drive 立即注入，用户会以为只是改了文案
+    // 却被瞬间代发。要求先删除再重建，语义清晰可预期。
+    if (
+      existing.kind === 'at' &&
+      Date.parse(existing.scheduledAt) <= Date.now()
+    ) {
+      return {
+        ok: false,
+        code: 'already_overdue',
+        message: `定时任务 ${scheduleId} 的目标时刻已过，不能修改内容；请删除后重新创建。`,
+      };
     }
     const now = Date.now();
     let record: ScheduleRecord;
