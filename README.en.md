@@ -44,6 +44,12 @@ DSH's existing scheduling capabilities each miss a piece: `dsh-schedule` is expo
 
 <img src="docs/screenshot-fired.png" width="560" alt="Due-time injection"/>
 
+**Animated demos**:
+
+| Creating a reminder (type → panel → add → dock) | Firing (countdown → injected into chat) |
+|---|---|
+| <img src="docs/docs-scheduler-create.gif" width="480" alt="Creating a reminder"/> | <img src="docs/docs-scheduler-fired.gif" width="480" alt="Due-time firing"/> |
+
 ---
 
 ## Mental model (read this first — avoid the "scheduled vs. delayed send" trap)
