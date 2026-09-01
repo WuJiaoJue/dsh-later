@@ -47,6 +47,12 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 <img src="docs/screenshot-fired.png" width="560" alt="到期注入消息"/>
 
+**动图演示**：
+
+| 创建定时提醒（输入 → 面板 → 加入 → dock） | 到期触发（倒计时 → 注入对话） |
+|---|---|
+| <img src="docs/docs-scheduler-create.gif" width="480" alt="创建定时提醒演示"/> | <img src="docs/docs-scheduler-fired.gif" width="480" alt="到期触发演示"/> |
+
 ---
 
 ## 心智模型（先看这个，避免踩「定时 vs 延迟发送」的坑）
