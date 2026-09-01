@@ -36,6 +36,32 @@ export const DEFAULT_SMART_WINDOW: SmartWindowConfig = Object.freeze({
   eveningEnd: '22:00',
 });
 
+/** HH:mm（24 小时制）格式。 */
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 校验一个 HH:mm 字符串。 */
+export function isValidHhmm(value: unknown): value is string {
+  return typeof value === 'string' && HHMM_RE.test(value);
+}
+
+/**
+ * 清洗用户/配置层提供的时段字段：非法或缺省的字段逐项回落默认值
+ * （host schema 与 client 设置面共用；保证下游 `nextSmartTarget` 永不因脏输入抛错）。
+ */
+export function sanitizeSmartWindowConfig(
+  raw: Partial<Record<keyof SmartWindowConfig, unknown>> | undefined | null,
+): SmartWindowConfig {
+  const pick = (key: keyof SmartWindowConfig, fallback: string): string =>
+    isValidHhmm(raw?.[key]) ? (raw[key] as string) : fallback;
+  return {
+    workStart: pick('workStart', DEFAULT_SMART_WINDOW.workStart),
+    workEnd: pick('workEnd', DEFAULT_SMART_WINDOW.workEnd),
+    lunchStart: pick('lunchStart', DEFAULT_SMART_WINDOW.lunchStart),
+    lunchEnd: pick('lunchEnd', DEFAULT_SMART_WINDOW.lunchEnd),
+    eveningEnd: pick('eveningEnd', DEFAULT_SMART_WINDOW.eveningEnd),
+  };
+}
+
 /** 两次提醒之间至少等待的毫秒数（智能模式下）。 */
 export const SMART_MIN_DELAY_MS = 2 * 60 * 1000;
 

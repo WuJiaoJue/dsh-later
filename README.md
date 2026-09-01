@@ -18,27 +18,34 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 - **用户工具**（P0）：`user_schedule_create` / `user_schedule_list` / `user_schedule_delete` / `user_schedule_edit`（改内容保留原时刻），复用 dsh-schedule 领域函数，写入与其**完全兼容**的会话事件日志。
 - **GUI 面板**：输入框右侧 ⏰ 按钮（order 50）→ 智能时段 / 自定义时间 / 发送预览 / 已设定任务列表 / 倒计时芯片（含取消全部）。
+- **设置页配置**：DSH 设置 → 插件 → Session Scheduler 提供 `maxSchedules` + 智能时段 5 个 HH:mm 字段，全部 **live 生效**（无需重启），字段优先级 用户设置 > cordis yml > schema 默认。
 - **输入框上方 dock**：待发送提醒条（单条直出 / 多条折叠可展开），每条**可单独取消、可点击 ✎ 行内改内容**。
 - **`/later` 延迟发送**：到点以「你」的身份代发内容（产品取舍见心智模型）。
 - **提醒到达 toast**：到期注入时右上角弹轻提示（投影差异检测，5s 自消）。
 - **关网页也能触发**：任务持久化在 session JSONL（事件溯源），到期由 dsh-schedule 引擎 dispatch + `followup()` 注入用户角色消息，不经浏览器。
-- **注入防护**：非 `/later` 路径的提醒内容作为「非信任提醒内容」经 `renderReminderFraming` JSON 转义转达，不当作新的用户指令。
+- **注入防护**：提醒内容作为「非信任提醒内容」经 `renderReminderFraming` JSON 转义转达，不当作新的用户指令。`/later` 的代发形态（`delivery:'user'`）只能由人类显式输入的命令经**可信通道参数**声明——工具与 GUI 载荷里的同名字段一律无效（安全边界有回归测试锁定）。
+- **积压合并派发**：关网页期间积压的多条到期一次性提醒合并为一条批次注入（framing 形状与 dsh-schedule 固定间隔批次一致），不再逐条刷屏；`/later` 与 `/schedule` 积压按投递形态分组、按时间先后分轮派发。
+- **调度器自愈**：驱动异常按指数退避自动重试（1s→30s 封顶），不再永久停摆；插件热重载后正常重新挂载。
 - **fork 隔离**：子会话不继承父会话提醒。
 - **跟随 DSH 界面语言**：客户端微文案接入宿主 `locale` 服务（`useSchedT`，`useSyncExternalStore` 订阅），设置页切换 中文/English 时插件按钮、面板、dock、时间文案**实时跟随**（无刷新）；宿主无 locale 服务时回退中文。
 - **开发体验**：`npm run watch` 监听 src/ 自动重建 + 跑形状回归测试（lib/ 硬链接自动同步到 profile）。
-- **可测试**：60 个单元/集成测试覆盖纯逻辑、注册形状（回归护栏）与端到端生命周期。
+- **可测试**：70 个单元/集成测试覆盖纯逻辑、注册形状（回归护栏）、delivery 信任边界与端到端生命周期。
 
 ---
 
 ## 界面截图
 
-| ⏰ 定时面板 | 待发送 dock（倒计时 / ✎ 改内容 / ✕ 取消） |
-|---|---|
-| <img src="docs/screenshot-panel.png" width="420"/> | <img src="docs/screenshot-dock.png" width="420"/> |
+**⏰ 定时面板** —— 快捷时段 / 自定义时间 / 已设定任务列表：
 
-**到期真实触发**：`Context injection · 定时提醒 · HH:MM · 内容` 注入对话，模型即时响应（关网页也照常触发）：
+<img src="docs/screenshot-panel.png" width="340" alt="定时提醒面板"/>
 
-<img src="docs/screenshot-fired.png" width="640"/>
+**待发送 dock** —— 输入框上方倒计时条（✎ 行内改内容 / ✕ 取消；下方即输入框）：
+
+<img src="docs/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
+
+**到期真实触发** —— 到点以「⏰ 定时提醒到点」notice 形态注入对话（关网页也照常触发）：
+
+<img src="docs/screenshot-fired.png" width="560" alt="到期注入消息"/>
 
 ---
 
@@ -53,7 +60,7 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 > **为什么 `/schedule` 不是你心里那个「延迟发送」**：输入框里那行 `/schedule …` 一按回车就会**立刻**发出并作为一条用户消息落日志；被推迟的只是**新生成的提醒内容**（以 `上下文注入` 形式到达）。如果你要的是「把我现在打的这句话稍后当作我说出口」，用 **`/later`**。
 
-> **`/later` 的有意取舍**：它让未被真人实时键入的内容以用户气泡出现，绕过核心「注入 vs 人键」的信任边界；因此只保留在人类**显式输入** `/later` 的路径（面板与工具一律走安全的 `上下文注入`）。
+> **`/later` 的有意取舍**：它让未被真人实时键入的内容以用户气泡出现，绕过核心「注入 vs 人键」的信任边界；因此只保留在人类**显式输入** `/later` 的路径（面板与工具一律走安全的 `上下文注入`）。实现上 `delivery:'user'` 只能经 `userScheduleCreate` 的 `trustedDelivery` 可信参数声明，任何通道载荷里的同名字段都被忽略。
 
 ```
 ┌─ 立即 ──────────┐   ┌─ 定时提醒（/schedule、⏰面板）────────┐   ┌─ 延迟发送（/later）────────┐
@@ -89,15 +96,24 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 ## 配置
 
-默认开箱即用。可在 `~/.dsh/profiles/web/cordis.patch.yml` 按 id 覆盖：
+默认开箱即用，两个相互正交的面：
+
+**设置页（推荐，UI 可改）**：DSH 设置 → 插件 → Session Scheduler。提供 6 个字段：
+
+- `maxSchedules` — 单 session 用户任务上限（≥1 整数）。
+- `workStart` / `workEnd` / `lunchStart` / `lunchEnd` / `eveningEnd` — 智能时段 5 个 HH:mm 字段，**实时生效**（保存后「工作时间」芯片与 `nextSmartAt` 立即按新值重算，无需刷新会话）。
+
+每个字段独立显示覆盖状态（用户层写入即「已覆盖」，可单独 reset 回 yml 起始值）。非法输入在卡片内校验并阻断保存；宿主/客户端读取前会再次清洗（`sanitizeSmartWindowConfig` 逐字段回落默认），保证下游绝不因脏输入抛错。
+
+**cordis 启动配置**（可选，power user）：在 `~/.dsh/profiles/web/cordis.patch.yml` 按 id 覆盖 `config.maxSchedules`，作为插件初始默认值；与设置页的 user 层正交——改 yml 后**重启 dsh web** 才会以新默认值生效（不再作为 settings base 层混合）。
 
 ```yaml
 - id: session-scheduler
   config:
-    maxSchedules: 100   # 单 session 用户任务上限
+    maxSchedules: 100   # 单 session 用户任务上限（不设则走 schema 默认 100）
 ```
 
-> v1 智能时段采用默认值（工作时间 09:00–18:00、午休 12:00–14:00、晚间 18:00–22:00、夜间静默）。「可配置智能时段」见 v1.1 路线。
+> 设计参考：与 dsh-smooth-stream / dsh-auto-collapse 一致——yml 文件配置只决定插件**启动期**初值，运行时用户偏好走设置服务 `scope.get()` 按需读取（不主动 watch，避免一致性边界）。`applies: 'live'` 声明所有 settings 字段即时生效。
 
 ## 架构
 
@@ -177,7 +193,7 @@ dsh-schedule 的 runtime 只在其自身工具变更 / agent 转 idle 时重驱�
 
 ## 验证状态
 
-- **单元/集成测试**：60 个全绿（host + client 双端构建通过；`npm run typecheck` 因 dev 环境双副本 `@deepseek-ai/dsh-session` 有预存依赖类型噪音，构建不受影响，见下方「依赖对齐」）
+- **单元/集成测试**：70 个全绿（host + client 双端构建通过；`npm run typecheck` 因 dev 环境双副本 `@deepseek-ai/dsh-session` 有预存依赖类型噪音，构建不受影响——本轮改动后噪音错误较基线净减 5 条，无新增）
 - **独立实例线上 E2E（Playwright 无头真点 UI）**：按钮渲染→开面板→自定义时间→确认→芯片出现→任务列表可见→**到期真触发（≈计划 75s，实测 72s）→对话出现 `user/message`（source=plugin:session-scheduler）**；磁盘日志逐条确认 create→owned→dispatch→followup 全持久化、无重复触发。
 
 ## 目录

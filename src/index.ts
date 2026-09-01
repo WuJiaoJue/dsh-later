@@ -82,7 +82,7 @@ function registerUserScheduleTools(
   rootCtx: Context,
   toolCtx: Context,
   agent: Agent,
-  maxSchedules: number,
+  getSettings: () => { maxSchedules: number },
   onUserChange: (agent: Agent) => void,
 ): () => void {
   const dispose = () => undefined;
@@ -92,7 +92,7 @@ function registerUserScheduleTools(
         defineTool({
           name: 'user_schedule_create',
           description:
-            '为用户创建一条当前会话内的定时提醒。必须提供非空提示、合法的 IANA 时区（必填）与恰好一个选择器：after_seconds（正整数延时秒）、at（显式偏移时间或 {date,time,time_zone} 本地时间）、every_seconds（≥300 的固定间隔秒）。创建来源被标记为用户工具，GUI 面板会展示。',
+            '为用户创建一条当前会话内的定时提醒。必须提供非空提示与恰好一个选择器：after_seconds（正整数延时秒）、at（显式偏移时间或 {date,time,time_zone} 本地时间）、every_seconds（≥300 的固定间隔秒）。time_zone 可选，缺省用会话检测时区。创建来源被标记为用户工具，GUI 面板会展示。',
           parameters: {
             prompt: { type: 'string', required: true, description: '提醒内容（trim 后非空，≤1000 字符）。' },
             after_seconds: { type: 'number', description: '正整数延时秒数。' },
@@ -112,7 +112,7 @@ function registerUserScheduleTools(
                 },
               ],
             },
-            time_zone: { type: 'string', required: true, description: 'IANA 时区（如 Asia/Shanghai）。' },
+            time_zone: { type: 'string', description: 'IANA 时区（如 Asia/Shanghai）；可选，缺省用会话检测时区。' },
           },
           output: {
             schema: { type: 'string' },
@@ -120,7 +120,7 @@ function registerUserScheduleTools(
           },
           async execute(args: UserScheduleCreateInput, exec) {
             if (exec.agent !== agent) return JSON.stringify({ ok: false, code: 'internal_error', message: '操作失败。' });
-            const result = await userScheduleCreate(args, agent, rootCtx, maxSchedules);
+            const result = await userScheduleCreate(args, agent, rootCtx, getSettings().maxSchedules);
             if (result.ok) {
               try {
                 onUserChange(agent);
@@ -196,7 +196,16 @@ function registerUserScheduleTools(
 let stopping = false;
 
 export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
-  const maxSchedules = resolveMaxSchedules(config?.maxSchedules);
+  // P0-2：cordis 在配置变更/重载时会 teardown 后再次 apply。stopping 是模块级
+  // 标志，若不复位，第二次 apply 起所有 agent 都会在 agent/created 处早退，
+  // 用户工具与调度器静默不挂载（GUI 无按钮、提醒永不触发）。
+  stopping = false;
+
+  // yml 启动配置仅在首次解析时生效（与运行时用户设置正交，参见
+  // dsh-smooth-stream 等同款做法）：用户在设置页保存的值走自己的 user 层，
+  // 不与 yml base 混合。命令/工具每次调用通过 getSettings() 按需读取设置层的
+  // maxSchedules（设置未保存则回退 yml/默认）。
+  const startMaxSchedules = resolveMaxSchedules(config?.maxSchedules);
 
   // 0. 注册自有事件类型（进程级、幂等）：否则含 `session-scheduler/user-schedule`
   //    的日志会被任何加载了本插件的读者以 SessionFormatUnsupportedError 拒读
@@ -215,8 +224,24 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   });
 
   // 2. 注册 settings namespace（设置 - 插件 配置 UI）。
+  // 拿住 owner scope：`applies: 'live'` 声明改动即时生效。工具/命令 handler
+  // 每次调用通过 getSettings() 按需读取——避免主动 watch 引入的一致性边界与
+  // 误同步（对齐 dsh-smooth-stream / dsh-auto-collapse 的写法）。
+  let getSettings: (() => { maxSchedules: number }) = () => ({ maxSchedules: startMaxSchedules });
   ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(settingsNamespace('dsh-session-scheduler'), SchedulerSettingsSchema);
+    const scope = settingsCtx.settings.register(
+      settingsNamespace('dsh-session-scheduler'),
+      SchedulerSettingsSchema,
+      { applies: 'live' },
+    );
+    getSettings = () => {
+      try {
+        const value = scope.get() as { maxSchedules?: number } | undefined;
+        return { maxSchedules: resolveMaxSchedules(value?.maxSchedules) };
+      } catch {
+        return { maxSchedules: startMaxSchedules };
+      }
+    };
   });
 
   // 每个 root agent 一个「用户提醒调度器」：负责确保命令/工具创建的提醒会武装 timer 并触发。
@@ -232,7 +257,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   };
 
   // 2. slash 命令（客户端变更通道），全局注册一次。
-  ctx.effect(() => registerUserScheduleCommands(ctx, maxSchedules, notifyUserChange), 'session-scheduler.commands()');
+  ctx.effect(() => registerUserScheduleCommands(ctx, getSettings, notifyUserChange), 'session-scheduler.commands()');
 
   // 3. 每个 root agent：注册用户工具 + 用户调度器生命周期。
   ctx.effect(() => {
@@ -242,7 +267,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
       let cleanup: () => void = () => undefined;
       try {
         cleanup = agent.ctx.effect(() => {
-          const disposeTools = registerUserScheduleTools(ctx, agent.ctx, agent, maxSchedules, notifyUserChange);
+          const disposeTools = registerUserScheduleTools(ctx, agent.ctx, agent, getSettings, notifyUserChange);
           const stopStatus = agent.ctx.on('agent/status', ({ status }: { status: string }) => {
             // 自愈：agent 转 idle 时重算（与 dsh-schedule 同构），覆盖被遗漏的重驱。
             if (status === 'idle') runtime.requestDrive();

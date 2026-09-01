@@ -10,6 +10,7 @@ import {
   DEFAULT_MAX_SCHEDULES,
   userScheduleCreate,
   userScheduleDelete,
+  userScheduleEditPrompt,
   userScheduleList,
 } from '../lib/user-tools.js';
 import { OWNED_EVENT } from '../lib/domain.js';
@@ -185,4 +186,65 @@ test('永久分配不重复的 id', async () => {
   );
   assert.ok(second.ok);
   if (second.ok) assert.equal(second.id, 'schedule-2');
+});
+
+// ─── P0-1：delivery 信任边界 ───────────────────────────────────────────
+
+test('P0-1：工具/通用通道夹带 delivery:"user" 必须被忽略（安全回归）', async () => {
+  const agent = fakeAgent();
+  // 模型在工具参数 / GUI 在面板载荷里夹带 delivery —— 一律无效
+  const smuggled = await userScheduleCreate(
+    { ...atInput, delivery: 'user' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(smuggled.ok);
+  const owned = agent.session.events.filter((e) => e.type === OWNED_EVENT);
+  assert.equal(owned.length, 1);
+  assert.equal(owned[0].data.delivery, undefined); // 未获得代发形态
+});
+
+test('P0-1：仅可信通道（trustedDelivery）能声明 user 代发形态', async () => {
+  const agent = fakeAgent();
+  const later = await userScheduleCreate(
+    { prompt: '稍后替我说', after_seconds: 600 },
+    agent,
+    fakeCtx,
+    DEFAULT_MAX_SCHEDULES,
+    { trustedDelivery: 'user' }, // 只有人类显式输入的 /later 走这里
+  );
+  assert.ok(later.ok);
+  const owned = agent.session.events.filter((e) => e.type === OWNED_EVENT);
+  assert.equal(owned[0].data.delivery, 'user');
+});
+
+// ─── P1-8：时区可选 ──────────────────────────────────────────────────
+
+test('P1-8：time_zone 缺省时用检测时区创建成功', async () => {
+  const agent = fakeAgent();
+  const result = await userScheduleCreate({ prompt: '不带时区', after_seconds: 600 }, agent, fakeCtx);
+  assert.ok(result.ok);
+  if (result.ok) {
+    assert.equal(result.kind, 'after');
+    assert.ok(result.scheduled_at.length > 0);
+  }
+});
+
+// ─── P0-4：过期 at 任务禁止改内容 ─────────────────────────────────────
+
+test('P0-4：编辑已过期的 at 任务返回 already_overdue，不产生新事件', async () => {
+  const pastRecord = {
+    id: 'schedule-past',
+    kind: 'at',
+    prompt: '旧的',
+    scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+  };
+  const agent = fakeAgent([
+    { type: 'schedule/change', data: { version: 1, operation: 'create', schedule: pastRecord } },
+    { type: OWNED_EVENT, data: { version: 1, operation: 'add', id: 'schedule-past' } },
+  ]);
+  const before = agent.session.events.length;
+  const edited = await userScheduleEditPrompt('schedule-past', '新内容', agent, fakeCtx);
+  assert.ok(!edited.ok && edited.code === 'already_overdue');
+  assert.equal(agent.session.events.length, before); // 无任何写入
 });

@@ -340,6 +340,12 @@ const COMPONENTS = [
 '',
 '/* ==================== 设置页 ==================== */',
 '/* 对齐官方 PluginCard footer：save 实底 label-primary、discard 描边、radius 8、13px */',
+'.ss-subhead {',
+'  margin: 16px 0 4px;',
+'  font-size: 13px; font-weight: 500;',
+'  color: var(--dsw-alias-label-primary);',
+'}',
+'.ss-subhint { margin: 0 0 8px; font-size: 12px; color: var(--dsw-alias-label-tertiary); }',
 '.ss-settings-actions {',
 '  display: flex; justify-content: flex-end; align-items: center; gap: 8px;',
 '  border-top: 1px solid var(--dsw-alias-border-l2); padding: 12px 0 4px;',
@@ -368,6 +374,14 @@ const COMPONENTS = [
 '  color: var(--dsw-alias-state-error-primary); font-size: 12px;',
 '  line-height: 1.5; min-width: 0; flex: 1; margin: 0;',
 '}',
+'.ss-card-root { flex-direction: column; min-width: 0; display: flex; }',
+'.ss-card-head { align-items: center; gap: 12px; min-width: 0; display: flex; }',
+'.ss-card-headText { flex-direction: column; gap: 4px; min-width: 0; flex: 1; display: flex; }',
+'.ss-card-title { color: var(--dsw-alias-label-primary); font-size: 15px; font-weight: 600; line-height: 1.4; }',
+'.ss-card-description { color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 1.5; }',
+'.ss-card-pending { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); white-space: nowrap; border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 500; line-height: 17px; }',
+'.ss-card-body { flex-direction: column; gap: 4px; min-width: 0; display: flex; }',
+'.ss-readonly { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1.5; margin: 4px 0; }',
 ].join('\n');
 
 export function injectStyles(): () => void {

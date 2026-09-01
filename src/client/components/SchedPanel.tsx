@@ -8,11 +8,11 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import { epochFromLocal, localFieldsOf, nextSmartAt } from '../../smart-window.js';
+import { epochFromLocal, localFieldsOf, nextSmartAt, DEFAULT_SMART_WINDOW, type SmartWindowConfig } from '../../smart-window.js';
 import type { TextLocale } from '../../time-utils.js';
 import { formatAbsolute, formatRelative } from '../../time-utils.js';
 import { TaskList } from './TaskList.js';
-import { format, type SchedStrings } from '../strings.js';
+import { format, CLIENT_ERR, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import type { ClientAtInput, ClientSchedule, CreateCommandPayload } from '../types.js';
 
@@ -33,6 +33,8 @@ export interface SchedPanelProps {
   onDelete: (id: string) => void;
   /** 父组件提供的底部定位（相对视口），用于把面板浮在输入行上方。 */
   bottom: number;
+  /** 智能时段配置（设置页实时值，已清洗；缺省用内置默认）。 */
+  smartWindow?: SmartWindowConfig;
 }
 
 /** 一个快捷选项：相对时长（after_seconds）或固定时刻（at）。 */
@@ -65,6 +67,7 @@ export function SchedPanel({
   onCreate,
   onDelete,
   bottom,
+  smartWindow = DEFAULT_SMART_WINDOW,
 }: SchedPanelProps): JSX.Element {
   const now = useNow(1000);
   const [selected, setSelected] = useState<string>('after-600');
@@ -108,20 +111,21 @@ export function SchedPanel({
   );
 
   // 快捷选项（每分钟重算一次足够；直接跟随 now 简单可靠）。
+  // 「今天晚间」「明天早上」芯片与智能时段均跟随设置页的实时时段配置。
   const quickOptions = useMemo<QuickOption[]>(() => {
     const options: QuickOption[] = [
       { kind: 'after', seconds: 600, label: t.quick10m },
       { kind: 'after', seconds: 3600, label: t.quick1h },
     ];
-    const todayEvening = atOnDay(0, '18:00', timeZone, now);
+    const todayEvening = atOnDay(0, smartWindow.workEnd, timeZone, now);
     if (todayEvening !== null && todayEvening.epoch > now) {
-      options.push({ kind: 'at', ...todayEvening, label: `${t.today} 18:00` });
+      options.push({ kind: 'at', ...todayEvening, label: `${t.today} ${smartWindow.workEnd}` });
     }
-    const tomorrowMorning = atOnDay(1, '09:00', timeZone, now);
+    const tomorrowMorning = atOnDay(1, smartWindow.workStart, timeZone, now);
     if (tomorrowMorning !== null && tomorrowMorning.epoch > now) {
-      options.push({ kind: 'at', ...tomorrowMorning, label: `${t.tomorrow} 09:00` });
+      options.push({ kind: 'at', ...tomorrowMorning, label: `${t.tomorrow} ${smartWindow.workStart}` });
     }
-    const smart = nextSmartAt(now, timeZone);
+    const smart = nextSmartAt(now, timeZone, smartWindow);
     if (smart !== null) {
       options.push({
         kind: 'smart',
@@ -132,7 +136,7 @@ export function SchedPanel({
     }
     options.push({ kind: 'custom', label: t.quickCustom });
     return options;
-  }, [timeZone, now, t]);
+  }, [timeZone, now, t, smartWindow]);
 
   // 当前选中的目标（custom 分支单独计算）。
   const target = useMemo<{ at?: ClientAtInput; after_seconds?: number; epoch: number } | null>(() => {
@@ -160,6 +164,12 @@ export function SchedPanel({
       setError(t.errPromptEmpty);
       return;
     }
+    // 与宿主 MAX_PROMPT_CHARS=1000 对齐的本地预校验（P1-7）：
+    // 宿主错误文案不随 locale 变化，能在客户端拦下的就不发往宿主。
+    if (text.length > 1000) {
+      setError(t.errPromptTooLong);
+      return;
+    }
     if (target === null) {
       setError(t.errTimePast);
       return;
@@ -173,7 +183,14 @@ export function SchedPanel({
       );
       onClose();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      // hook 抛的是稳定令牌 → 按当前语言翻译；未知内容原样透出。
+      const message =
+        raw === CLIENT_ERR.NO_SESSION
+          ? t.errNoSession
+          : raw === CLIENT_ERR.NOT_ACCEPTED
+            ? t.errNotAcceptedStashed
+            : raw;
       setError(format(t.errCreateFailed, { message }));
     }
   };
