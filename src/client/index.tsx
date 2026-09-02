@@ -31,7 +31,11 @@ const INPUT_RIGHT_SLOT = 'conversation.input.right';
 /** 所需服务：插槽注册 + 会话解析（命令通道需要 session face）。 */
 const inject = ['slots', 'sessions', 'conversation', 'settingsScope', 'locale'];
 
+/** Locale 字典命名空间（locale 命名空间允许点分）。 */
 const NS = 'settings.plugins.session-scheduler';
+
+/** Settings 命名空间（必须与 host 端 settingsNamespace('dsh-session-scheduler') 一致）。 */
+const SETTINGS_NS = 'dsh-session-scheduler';
 
 /**
  * 浏览器插件主体。
@@ -122,7 +126,7 @@ function apply(ctx: Context): void {
 
   // 绑定插件设置 namespace → wire scope，供按钮/面板订阅智能时段配置。
   // 设置页保存后 SchedPanel 芯片立即重算，无须刷新会话。
-  const schedulerScope = settingsScope === undefined ? undefined : settingsScope.bind({ namespace: NS });
+  const schedulerScope = settingsScope === undefined ? undefined : settingsScope.bind({ namespace: SETTINGS_NS });
 
   ctx.slots.inject(
     INPUT_RIGHT_SLOT,
@@ -153,17 +157,18 @@ function apply(ctx: Context): void {
       ),
   );
 
-  // 注册设置页卡片
+  // 注册设置页卡片：scope 以普通 prop 传入（与 dsh-wakatime / dsh-auto-collapse
+  // 同款写法）——宿主渲染器会把 inject() 里的 `hooks.xxx` 转成 useXxx hook prop，
+  // 而卡片组件按普通 `scope` prop 解构，放 hooks 里会导致 scope 为 undefined、
+  // 卡片崩溃被卸载（设置 → 插件 里看不到本插件的卡片）。
   if (settingsScope !== undefined && locale !== undefined) {
     ctx.slots.inject('settings.plugin.item', function* () {
       yield ctx.slots.register({
         name: 'settings.plugin.item',
-        key: 'dsh-session-scheduler',
+        key: SETTINGS_NS,
         locale: NS,
         inject: () => ({
-          hooks: {
-            settingsScope: settingsScope.bind({ namespace: 'dsh-session-scheduler' }),
-          },
+          scope: settingsScope.bind({ namespace: SETTINGS_NS }),
           t: locale.bind(NS),
         }),
       }, SchedulerSettingsCard);
