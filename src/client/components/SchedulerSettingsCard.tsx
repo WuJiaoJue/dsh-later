@@ -16,11 +16,11 @@ export interface SchedulerSettings {
 /** 字段元数据（顺序固定，便于稳定渲染）。 */
 type FieldDef =
   | { readonly kind: 'number'; readonly key: 'maxSchedules'; readonly labelKey: string; readonly hintKey: string; readonly defaultValue: number }
-  | { readonly kind: 'time'; readonly key: 'workStart' | 'workEnd' | 'lunchStart' | 'lunchEnd' | 'eveningEnd'; readonly labelKey: string };
+  | { readonly kind: 'time'; readonly key: 'workStart' | 'workEnd' | 'lunchStart' | 'lunchEnd' | 'eveningEnd'; readonly labelKey: string; readonly hintKey?: string };
 
 const FIELDS: readonly FieldDef[] = [
   { kind: 'number', key: 'maxSchedules', labelKey: 'maxSchedulesLabel', hintKey: 'maxSchedulesHint', defaultValue: 100 },
-  { kind: 'time', key: 'workStart', labelKey: 'workStartLabel' },
+  { kind: 'time', key: 'workStart', labelKey: 'workStartLabel', hintKey: 'smartWindowHint' },
   { kind: 'time', key: 'workEnd', labelKey: 'workEndLabel' },
   { kind: 'time', key: 'lunchStart', labelKey: 'lunchStartLabel' },
   { kind: 'time', key: 'lunchEnd', labelKey: 'lunchEndLabel' },
@@ -31,32 +31,41 @@ const FIELDS: readonly FieldDef[] = [
 type Pending = { readonly value: string; readonly reset: boolean };
 type PendingMap = Partial<Record<string, Pending>>;
 
+/** 与官方 PluginCard 视觉一致的 chevron-down 图标（内联 SVG，零依赖）。 */
+function ChevronDown({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={className} aria-hidden="true">
+      <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export interface SchedulerSettingsCardProps {
   scope: SettingsScope<SchedulerSettings>;
   t: (key: string) => string;
 }
 
 /**
- * 定时提醒插件设置卡片（设置 → 插件）。
+ * 定时提醒插件设置卡片（设置 → 插件 → 插件配置）。
  *
- * 字段分两段：单会话任务上限（数字）+ 智能时段 5 个 HH:mm 字段。
+ * 视觉与交互对齐官方 PluginCard（dsh-client-ui-settings-plugins 内部私有组件，
+ * bundle 纯净性门控禁止 import 其卡片 chrome/表单模型作为值，这里按相同结构
+ * 自实现，参考 dsh-wakatime 同款做法）：
+ *  - header 整卡按钮默认收起，点击展开/收起（折叠态只显示标题+描述）；
+ *  - 有未保存草稿时 header 显示「未保存」徽章（折叠态也能看见）；
+ *  - 字段为「label 行（覆盖徽章 + 重置）→ 输入控件 → 提示」三段式；
+ *  - 非法草稿阻塞保存；保存后清空草稿；写入失败保留草稿并报错。
  *
- * 状态模型（对齐 dsh-auto-collapse）：每个字段维护独立的 `pending` 中间态
- * （待保存的 value + reset 意图）；保存时按字段批量写。`reset` 表示「点击了
- * reset 按钮但尚未保存」，实际写入由 save 统一调用 `unset` 完成。
- *
- * 已覆盖徽章按字段独立显示（snapshot.user 含该 key 即视为覆盖）；reset
- * 链接恢复该字段到 base 层（即 yml config）——若 base 未设则回退 schema default。
- *
- * 卡片顶部标题栏：title + description + pending 徽章 + 折叠 chevron（沿用
- * PluginCard 框架）。Body 内字段 + 底部 save/discard 按钮（任一字段 dirty
- * 即触发；任一字段非法阻断保存）。
+ * 状态模型：每个字段维护独立的 `pending` 中间态（待保存的 value + reset 意图）；
+ * 保存时按字段批量写。`reset` 表示「点击了 reset 按钮但尚未保存」，实际写入
+ * 由 save 统一调用 `unset` 完成。空串视为「回退默认」→ unset。
  */
 export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps): JSX.Element {
   const [snapshot, setSnapshot] = useState(() => scope.getSnapshot());
   const [pending, setPending] = useState<PendingMap>({});
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const initial = scope.getSnapshot();
@@ -75,6 +84,7 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
     });
   }, [scope]);
 
+  if (snapshot.status === 'unavailable') return null; // 命名空间未暴露时不显示卡片
   if (snapshot.status !== 'ready') {
     if (snapshot.status === 'loading') return <div className="ss-hint">{t('loading')}</div>;
     return <div className="ss-hint">{t('unavailable')}</div>;
@@ -113,9 +123,7 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
     return v ?? '';
   };
 
-  const dirty =
-    Object.keys(pending).length > 0 &&
-    Object.values(pending).some((p) => p !== undefined);
+  const dirty = Object.keys(pending).length > 0 && Object.values(pending).some((p) => p !== undefined);
 
   const validate = (field: FieldDef, raw: string): string | null => {
     if (field.kind === 'number') {
@@ -186,90 +194,101 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
   const saveDisabled = !dirty || saving || !writable || anyInvalid;
 
   return (
-    <div className="ss-card-root">
-      <div className="ss-card-head">
-        <div className="ss-card-headText">
-          <div className="ss-card-title">{t('title')}</div>
-          <div className="ss-card-description">{t('description')}</div>
-        </div>
+    <li className={open ? 'ss-card ss-cardOpen' : 'ss-card'}>
+      <button
+        type="button"
+        className="ss-card-header"
+        aria-expanded={open}
+        aria-label={`${t(open ? 'collapse' : 'expand')}: ${t('title')}`}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="ss-card-headText">
+          <span className="ss-card-name">{t('title')}</span>
+          <span className="ss-card-description">{t('description')}</span>
+        </span>
         {dirty && <span className="ss-card-pending">{t('pendingBadge')}</span>}
-      </div>
+        <ChevronDown className={open ? 'ss-card-chevron ss-card-chevronOpen' : 'ss-card-chevron'} />
+      </button>
+      {open ? (
+        <div className="ss-card-body">
+          {!writable && (
+            <p className="ss-card-readOnly" role="status">
+              {t('readOnly')}
+            </p>
+          )}
 
-      <div className="ss-card-body">
-        {!writable && <p className="ss-readonly">{t('readOnly')}</p>}
-
-        {FIELDS.map((field, index) => {
-          const invalid = invalidField(field);
-          const isTime = field.kind === 'time';
-          const labelKey = field.labelKey;
-          const hintKey = field.kind === 'number' ? field.hintKey : undefined;
-          const userHas = isUserOverridden(field.key);
-          const fieldId = `ss-${field.key}`;
-          return (
-            <div className="ss-field" key={field.key}>
-              <div className="ss-field-head">
-                <label htmlFor={fieldId} className="ss-field-label">
-                  {t(labelKey)}
-                </label>
-                {userHas && (
-                  <span className="ss-field-head-right">
-                    <span className="ss-badge">{t('overriddenLabel')}</span>
-                    <button
-                      type="button"
-                      className="ss-reset"
-                      disabled={!writable || saving}
-                      onClick={() => handleResetField(field)}
-                    >
-                      {t('resetLabel')}
-                    </button>
-                  </span>
-                )}
+          {FIELDS.map((field) => {
+            const invalid = invalidField(field);
+            const isTime = field.kind === 'time';
+            const labelKey = field.labelKey;
+            const hintKey = field.hintKey;
+            const userHas = isUserOverridden(field.key);
+            const fieldId = `ss-${field.key}`;
+            return (
+              <div className="ss-field" key={field.key}>
+                <div className="ss-card-fieldHead">
+                  <label htmlFor={fieldId} className="ss-card-label">
+                    {t(labelKey)}
+                  </label>
+                  {userHas && (
+                    <span className="ss-card-badges">
+                      <span className="ss-card-badge">{t('overriddenLabel')}</span>
+                      <button
+                        type="button"
+                        className="ss-card-reset"
+                        disabled={!writable || saving}
+                        onClick={() => handleResetField(field)}
+                      >
+                        {t('resetLabel')}
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <input
+                  id={fieldId}
+                  type={isTime ? 'time' : 'text'}
+                  inputMode={isTime ? undefined : 'numeric'}
+                  className={invalid !== null ? 'ss-input ss-inputInvalid' : 'ss-input'}
+                  aria-invalid={invalid !== null || undefined}
+                  value={displayValue(field)}
+                  placeholder={field.kind === 'number' ? String(field.defaultValue) : undefined}
+                  disabled={!writable || saving}
+                  onChange={(event) => handleFieldEdit(field, event.target.value)}
+                />
+                {invalid !== null || (hintKey !== undefined && t(hintKey).length > 0) ? (
+                  <p className={invalid !== null ? 'ss-card-invalid' : 'ss-hint'}>
+                    {invalid !== null ? invalid : t(hintKey as string)}
+                  </p>
+                ) : null}
               </div>
-              <input
-                id={fieldId}
-                type={isTime ? 'time' : 'text'}
-                inputMode={isTime ? undefined : 'numeric'}
-                className={invalid !== null ? 'ss-input ss-invalid' : 'ss-input'}
-                aria-invalid={invalid !== null || undefined}
-                value={displayValue(field)}
-                placeholder={
-                  field.kind === 'number'
-                    ? String(field.defaultValue)
-                    : undefined
-                }
-                disabled={!writable || saving}
-                onChange={(event) => handleFieldEdit(field, event.target.value)}
-              />
-              <p className={invalid !== null ? 'ss-error' : 'ss-hint'}>
-                {invalid !== null ? invalid : hintKey !== undefined ? t(hintKey) : ''}
-              </p>
-              {field.kind === 'time' && index === FIELDS.length - 5 && (
-                <p className="ss-subhint">{t('smartWindowHint')}</p>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
 
-        <div className="ss-settings-actions">
-          {failed && <p className="ss-settings-error">{t('saveFailed')}</p>}
-          <button
-            type="button"
-            className="ss-settings-discard"
-            disabled={!dirty || saving}
-            onClick={handleDiscard}
-          >
-            {t('discard')}
-          </button>
-          <button
-            type="button"
-            className="ss-settings-save"
-            disabled={saveDisabled}
-            onClick={() => void handleSave()}
-          >
-            {saving ? t('saving') : t('save')}
-          </button>
+          <div className="ss-card-footer">
+            {failed && (
+              <p className="ss-card-failed" role="status">
+                {t('saveFailed')}
+              </p>
+            )}
+            <button
+              type="button"
+              className="ss-card-discard"
+              disabled={!dirty || saving}
+              onClick={handleDiscard}
+            >
+              {t('discard')}
+            </button>
+            <button
+              type="button"
+              className="ss-card-save"
+              disabled={saveDisabled}
+              onClick={() => void handleSave()}
+            >
+              {saving ? t('saving') : t('save')}
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </li>
   );
 }
