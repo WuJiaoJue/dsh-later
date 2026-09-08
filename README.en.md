@@ -1,9 +1,9 @@
 <div align="center">
 
-<img src="docs/icon-presence-scheduled.svg?v=15" width="64" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=15" width="64" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=15" width="64" alt="overdue"/>
-<img src="docs/icon-presence.svg?v=15" width="64" alt="presence"/>
+<img src="docs/icon-presence-scheduled.svg?v=16" width="64" alt="scheduled"/>
+<img src="docs/icon-presence-urgent.svg?v=16" width="64" alt="urgent"/>
+<img src="docs/icon-presence-overdue.svg?v=16" width="64" alt="overdue"/>
+<img src="docs/icon-presence.svg?v=16" width="64" alt="presence"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
