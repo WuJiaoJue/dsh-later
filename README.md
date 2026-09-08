@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo-pixel-clock-refined.png?v=3" width="128" alt="dsh-session-scheduler logo"/>
+<img src="docs/logo.svg?v=3" width="128" alt="dsh-session-scheduler logo"/>
 
 # dsh-session-scheduler — 会话内定时消息插件
 
