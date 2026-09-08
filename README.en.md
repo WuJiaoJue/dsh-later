@@ -20,7 +20,7 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 - **Input-bar timer button**: one click opens the schedule panel — smart time slots / custom time / send preview / pending list / countdown chip.
 - **Pending dock**: a list above the input box; each item can be **cancelled** individually or **edited inline** via its edit icon.
-- **`/later` delayed send**: deliver *the text you are typing right now* later, as yourself (distinct from reminders — see the [mental model](#mental-model-reminder-vs-delayed-send)).
+- **`/later` delayed send**: deliver *the text you are typing right now* later, as yourself (distinct from reminders — see [the difference](#first-the-difference-reminders-vs-delayed-sends)).
 - **Sidebar presence indicator**: conversations with active reminders show a pixel clock in the sidebar (purple = scheduled · amber = fires within 5 min · red = overdue); hover shows count and next fire time.
 - **Fires with the page closed**: reminders persist server-side and arrive on time across devices.
 - **Anti-spoofing**: due reminders arrive as a `Reminder` notice — they never impersonate you.
@@ -51,7 +51,7 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 ---
 
-## Mental model: reminder vs. delayed send
+## First, the difference: reminders vs. delayed sends
 
 | Action | Timing | Who "speaks" | What you see |
 |---|---|---|---|
