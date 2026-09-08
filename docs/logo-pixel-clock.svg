@@ -1,13 +1,4 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="ssLogoBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0b1220"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#ssLogoBg)"/>
-
   <!-- 像素时钟：基于 session-presence 的 CLOCK_SVG 设计，放大到 512x512 -->
   <!-- 原始设计：10x10 viewBox，每个像素块 2x2 -->
   <!-- 放大比例：512 / 10 = 51.2，这里用 48x48 的像素块，整体偏移居中 -->
