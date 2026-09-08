@@ -1,9 +1,8 @@
 <div align="center">
 
-<img src="docs/icon-presence-scheduled.svg?v=17" width="64" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=17" width="64" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=17" width="64" alt="overdue"/>
-<img src="docs/icon-presence.svg?v=17" width="64" alt="presence"/>
+<img src="docs/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
+<img src="docs/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
+<img src="docs/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
 # dsh-session-scheduler — 会话内定时消息插件
 
@@ -295,3 +294,15 @@ dsh-schedule 的 runtime 只在三类时机重驱：agent 创建、**其自身�
 ## 许可
 
 MIT
+
+---
+
+<div align="center">
+
+**侧栏定时状态标识** · 定时中 · 紧急（≤5 分钟）· 已到期
+
+<img src="docs/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
+<img src="docs/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
+<img src="docs/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
+
+</div>

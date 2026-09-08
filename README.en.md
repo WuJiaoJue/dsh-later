@@ -1,9 +1,8 @@
 <div align="center">
 
-<img src="docs/icon-presence-scheduled.svg?v=17" width="64" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=17" width="64" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=17" width="64" alt="overdue"/>
-<img src="docs/icon-presence.svg?v=17" width="64" alt="presence"/>
+<img src="docs/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
+<img src="docs/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
+<img src="docs/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
@@ -254,3 +253,15 @@ dsh-schedule's runtime only re-drives on: agent creation, persisted changes from
 ## License
 
 MIT
+
+---
+
+<div align="center">
+
+**Sidebar presence indicator** · scheduled · urgent (≤5 min) · overdue
+
+<img src="docs/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
+<img src="docs/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
+<img src="docs/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
+
+</div>
