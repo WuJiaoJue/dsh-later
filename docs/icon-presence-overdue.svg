@@ -1,6 +1,6 @@
 <svg width="512" height="512" viewBox="0 0 10 10" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
   <g fill="#ef4444">
-    <!-- 外圈 ring（8个方块） -->
+    <!-- 外圈 ring（8个方块）- 无动画（已过期） -->
     <rect x="0" y="0" width="2" height="2"/>
     <rect x="4" y="0" width="2" height="2"/>
     <rect x="8" y="0" width="2" height="2"/>
