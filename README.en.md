@@ -20,12 +20,12 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 - **Input-bar timer button**: one click opens the schedule panel — smart time slots / custom time / send preview / pending list / countdown chip.
 - **Pending dock**: a list above the input box; each item can be **cancelled** individually or **edited inline** via its edit icon.
-- **`/later` delayed send**: deliver *the text you are typing right now* later, as yourself (distinct from reminders — see [the difference](#first-the-difference-reminders-vs-delayed-sends)).
+- **`/later` delayed send**: deliver *the text you are typing right now* later, as yourself (see [the difference](#reminders-vs-delayed-sends-whats-the-difference)).
 - **Sidebar presence indicator**: conversations with active reminders show a pixel clock in the sidebar (purple = scheduled · amber = fires within 5 min · red = overdue); hover shows count and next fire time.
 - **Fires with the page closed**: reminders persist server-side and arrive on time across devices.
-- **Anti-spoofing**: due reminders arrive as a `Reminder` notice — they never impersonate you.
+- **Never impersonates you**: when due, the message appears as a `Reminder` — it is never framed as your own words.
 - **Multilingual**: follows the DSH UI language (Chinese / English), live without reload.
-- **Fork isolation**: child sessions never inherit a parent's reminders.
+- **Reminders don't carry across sessions**: sessions forked from this one never inherit the parent's reminders.
 
 ---
 
@@ -39,27 +39,27 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 <img src="docs/screenshot-dock.png" width="700" alt="Pending dock and input box"/>
 
-**A real due-time firing** — the reminder lands as a notice when the time comes (fires even with the page closed):
+**A real due-time firing** — when the time comes, a `Reminder due` message appears in the conversation (fires even with the page closed):
 
-<img src="docs/screenshot-fired.png" width="560" alt="Due-time injection message"/>
+<img src="docs/screenshot-fired.png" width="560" alt="Due-time reminder message"/>
 
 **Animated demos**:
 
-| Creating a reminder (type → panel → add → dock) | Firing when due (countdown → injection) |
+| Creating a reminder (type → panel → add → dock) | Firing when due (countdown → message arrives) |
 |---|---|
 | <img src="docs/docs-scheduler-create.gif" width="480" alt="Create reminder demo"/> | <img src="docs/docs-scheduler-fired.gif" width="480" alt="Due firing demo"/> |
 
 ---
 
-## First, the difference: reminders vs. delayed sends
+## Reminders vs. delayed sends: what's the difference?
 
-| Action | Timing | Who "speaks" | What you see |
+| Action | When it takes effect | Who sends it | What you see |
 |---|---|---|---|
-| Enter in the input box | Now | You | Normal user bubble |
-| Schedule panel / `/schedule <time> <content>` | When due | Reminder | `Reminder · HH:MM · content` notice row |
+| Enter in the input box | Immediately | You | Normal user bubble |
+| Schedule panel / `/schedule <time> <content>` | When due | The reminder | `Reminder · HH:MM · content` row |
 | `/later <time> <content>` | When due | As yourself | Normal user bubble |
 
-> **`/schedule` is not "delayed send"**: pressing Enter on `/schedule …` sends it *immediately* as a user message; only the **newly generated reminder** is deferred. If you want "say this later as me", use **`/later`**.
+> **`/schedule` is not "delayed send"**: pressing Enter on `/schedule …` sends it *immediately* (as a user message); only the **reminder itself** is deferred. If you want "send the text I'm typing now, later, as if I said it", use **`/later`**.
 
 ---
 
@@ -105,7 +105,7 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 | Command | Effect |
 |---|---|
-| `/schedule <time> <content>` | Create a reminder (due-time notice injection) |
+| `/schedule <time> <content>` | Create a reminder (shows up in the conversation when due) |
 | `/later <time> <content>` | Delayed send: deliver the content later as yourself |
 | `/schedule every <interval> <content>` | Recurring reminder (interval ≥ 5 min) |
 
@@ -130,7 +130,7 @@ Hover shows "count · next fire time".
 Reminder content is limited to **1000 characters** by default. For longer content, enable `allowLongPrompts` in **DSH Settings → Plugins → Session Scheduler** and set `maxPromptChars`.
 
 - **Good for**: code snippets, meeting notes, long quotes, cross-device notes/todos.
-- **Not recommended**: text that could read as instructions (longer content = larger injection surface); a shared public profile (anyone could raise the limit).
+- **Not recommended**: text that could read as instructions (the longer it is, the bigger the risk); a shared public profile (anyone could raise the limit).
 
 ---
 
