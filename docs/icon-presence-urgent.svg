@@ -1,14 +1,30 @@
 <svg width="512" height="512" viewBox="0 0 10 10" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
   <g fill="#f59e0b">
-    <!-- 外圈 ring（8个方块） -->
-    <rect x="0" y="0" width="2" height="2"/>
-    <rect x="4" y="0" width="2" height="2"/>
-    <rect x="8" y="0" width="2" height="2"/>
-    <rect x="8" y="4" width="2" height="2"/>
-    <rect x="8" y="8" width="2" height="2"/>
-    <rect x="4" y="8" width="2" height="2"/>
-    <rect x="0" y="8" width="2" height="2"/>
-    <rect x="0" y="4" width="2" height="2"/>
+    <!-- 外圈 ring（8个方块）- 脉冲动画（更快） -->
+    <rect x="0" y="0" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="4" y="0" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="8" y="0" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="8" y="4" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="8" y="8" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="4" y="8" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="0" y="8" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="0" y="4" width="2" height="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="0.9s" repeatCount="indefinite"/>
+    </rect>
   </g>
   <g fill="#fbbf24">
     <!-- 指针 hand（2个方块） -->
