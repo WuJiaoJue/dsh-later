@@ -17,17 +17,26 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { GenericCallView, ToolCallKind } from '@deepseek-ai/dsh-tools/presentation';
 import type {} from '@deepseek-ai/dsh-session-projection';
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
+// Type-only：把 ctx.settings 的 Context merge 引入本程序（两代内核都有该包）。
+import type {} from '@deepseek-ai/dsh-settings';
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
 import { userSchedulesProjectionUnit } from './projection.js';
 import { registerUserScheduleCommands } from './commands.js';
 import { UserScheduleRuntime } from './runtime.js';
 import {
+  DEFAULT_MAX_PROMPT_CHARS,
   DEFAULT_MAX_SCHEDULES,
+  resolvePromptLimits,
   userScheduleCreate,
   userScheduleDelete,
   userScheduleList,
 } from './user-tools.js';
-import type { UserScheduleCreateInput, UserScheduleListResult, UserScheduleDeleteResult } from './user-tools.js';
+import type {
+  PromptLimits,
+  UserScheduleCreateInput,
+  UserScheduleListResult,
+  UserScheduleDeleteResult,
+} from './user-tools.js';
 import { name } from './domain.js';
 import { registerOwnedSessionEventType } from './owned-event-registration.js';
 
@@ -41,6 +50,10 @@ export const Config = s.object({
 const SchedulerSettingsSchema = s.object({
   /** 单 session 用户任务上限。 */
   maxSchedules: s.number().step(1).min(1).default(DEFAULT_MAX_SCHEDULES),
+  /** 是否解除提示字符的默认下限（1000）；关闭时 maxPromptChars 不生效。 */
+  allowLongPrompts: s.boolean().default(false),
+  /** 提示字符上限（≥1 整数）；仅在 allowLongPrompts=true 时生效。 */
+  maxPromptChars: s.number().step(1).min(1).default(DEFAULT_MAX_PROMPT_CHARS),
   /** 智能时段：工作时间开始（HH:mm）。 */
   workStart: s.string().default('09:00'),
   /** 智能时段：工作时间结束（HH:mm）。 */
@@ -51,6 +64,8 @@ const SchedulerSettingsSchema = s.object({
   lunchEnd: s.string().default('14:00'),
   /** 智能时段：晚间结束（HH:mm）。 */
   eveningEnd: s.string().default('22:00'),
+  /** 是否显示输入框右侧的定时按钮（仅 GUI 显隐；提醒触发与 dock 不受影响）。 */
+  showButton: s.boolean().default(true),
 });
 
 /** 所需服务（延后激活，缺失时插件不加载）。 */
@@ -60,6 +75,21 @@ export const inject = ['agents', 'sessions', 'tools', 'commands', 'settings'];
 function resolveMaxSchedules(value: number | undefined): number {
   if (typeof value !== 'number' || value < 1) return DEFAULT_MAX_SCHEDULES;
   return Math.floor(value);
+}
+
+/** 宿主持有的 settings 形状（settings getter 返回值与 register* 接受入参）。 */
+export interface SchedulerSettings {
+  readonly maxSchedules: number;
+  readonly allowLongPrompts: boolean;
+  readonly maxPromptChars: number;
+}
+
+/** 根据 settings 计算当前生效的提示字符上限（与 user-tools.resolvePromptLimits 同源）。 */
+function resolveSchedulerPromptLimits(settings: SchedulerSettings): PromptLimits {
+  return resolvePromptLimits({
+    allowLongPrompts: settings.allowLongPrompts,
+    maxPromptChars: settings.maxPromptChars,
+  });
 }
 
 /** 纯泛化等待卡片（GenericCallView）。 */
@@ -82,7 +112,7 @@ function registerUserScheduleTools(
   rootCtx: Context,
   toolCtx: Context,
   agent: Agent,
-  getSettings: () => { maxSchedules: number },
+  getSettings: () => SchedulerSettings,
   onUserChange: (agent: Agent) => void,
 ): () => void {
   const dispose = () => undefined;
@@ -91,10 +121,16 @@ function registerUserScheduleTools(
       toolCtx.tools.register(
         defineTool({
           name: 'user_schedule_create',
+          // description 在每次 register 时按当前 settings 生成：
+          // 模型看到的字符上限始终与宿主实际校验一致，避免描述与实现脱节。
           description:
             '为用户创建一条当前会话内的定时提醒。必须提供非空提示与恰好一个选择器：after_seconds（正整数延时秒）、at（显式偏移时间或 {date,time,time_zone} 本地时间）、every_seconds（≥300 的固定间隔秒）。time_zone 可选，缺省用会话检测时区。创建来源被标记为用户工具，GUI 面板会展示。',
           parameters: {
-            prompt: { type: 'string', required: true, description: '提醒内容（trim 后非空，≤1000 字符）。' },
+            prompt: {
+              type: 'string',
+              required: true,
+              description: `提醒内容（trim 后非空，≤${resolveSchedulerPromptLimits(getSettings()).maxChars} 字符；超过会返回 invalid_prompt）。`,
+            },
             after_seconds: { type: 'number', description: '正整数延时秒数。' },
             every_seconds: { type: 'number', description: '固定间隔秒数，至少 300。' },
             at: {
@@ -120,7 +156,15 @@ function registerUserScheduleTools(
           },
           async execute(args: UserScheduleCreateInput, exec) {
             if (exec.agent !== agent) return JSON.stringify({ ok: false, code: 'internal_error', message: '操作失败。' });
-            const result = await userScheduleCreate(args, agent, rootCtx, getSettings().maxSchedules);
+            const settings = getSettings();
+            const result = await userScheduleCreate(
+              args,
+              agent,
+              rootCtx,
+              settings.maxSchedules,
+              undefined,
+              resolveSchedulerPromptLimits(settings),
+            );
             if (result.ok) {
               try {
                 onUserChange(agent);
@@ -227,19 +271,38 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   // 拿住 owner scope：`applies: 'live'` 声明改动即时生效。工具/命令 handler
   // 每次调用通过 getSettings() 按需读取——避免主动 watch 引入的一致性边界与
   // 误同步（对齐 dsh-smooth-stream / dsh-auto-collapse 的写法）。
-  let getSettings: (() => { maxSchedules: number }) = () => ({ maxSchedules: startMaxSchedules });
+  const startSettings: SchedulerSettings = {
+    maxSchedules: startMaxSchedules,
+    allowLongPrompts: false,
+    maxPromptChars: DEFAULT_MAX_PROMPT_CHARS,
+  };
+  let getSettings: () => SchedulerSettings = () => startSettings;
   ctx.inject(['settings'], (settingsCtx) => {
     const scope = settingsCtx.settings.register(
-      settingsNamespace('dsh-session-scheduler'),
+      // 断言而非 settingsNamespace()：0.1.1 要求 branded 类型，0.1.2 已删除该 helper。
+      'dsh-session-scheduler' as SettingsNamespace,
       SchedulerSettingsSchema,
       { applies: 'live' },
     );
     getSettings = () => {
       try {
-        const value = scope.get() as { maxSchedules?: number } | undefined;
-        return { maxSchedules: resolveMaxSchedules(value?.maxSchedules) };
+        const value = scope.get() as
+          | {
+              maxSchedules?: number;
+              allowLongPrompts?: boolean;
+              maxPromptChars?: number;
+            }
+          | undefined;
+        return {
+          maxSchedules: resolveMaxSchedules(value?.maxSchedules ?? startSettings.maxSchedules),
+          allowLongPrompts: value?.allowLongPrompts === true,
+          maxPromptChars:
+            typeof value?.maxPromptChars === 'number' && value.maxPromptChars >= 1
+              ? Math.floor(value.maxPromptChars)
+              : startSettings.maxPromptChars,
+        };
       } catch {
-        return { maxSchedules: startMaxSchedules };
+        return startSettings;
       }
     };
   });
@@ -256,8 +319,26 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
     }
   };
 
+  /** 用户主动插话（GUI「插话发送」按钮）：路由到该 agent 的 runtime。 */
+  const notifyUserSteer = async (
+    agent: Agent,
+    id: string,
+  ): Promise<
+    | { readonly ok: true; readonly id: string; readonly steered: true }
+    | { readonly ok: false; readonly code: string; readonly message: string }
+  > => {
+    const runtime = runtimes.get(agent);
+    if (runtime === undefined) {
+      return { ok: false, code: 'no_runtime', message: '该会话尚未挂载用户调度器。' };
+    }
+    return runtime.steerById(id);
+  };
+
   // 2. slash 命令（客户端变更通道），全局注册一次。
-  ctx.effect(() => registerUserScheduleCommands(ctx, getSettings, notifyUserChange), 'session-scheduler.commands()');
+  ctx.effect(
+    () => registerUserScheduleCommands(ctx, getSettings, notifyUserChange, notifyUserSteer),
+    'session-scheduler.commands()',
+  );
 
   // 3. 每个 root agent：注册用户工具 + 用户调度器生命周期。
   ctx.effect(() => {

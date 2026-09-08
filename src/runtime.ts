@@ -23,6 +23,7 @@ import {
   renderEveryReminderBatchFraming,
   renderReminderFraming,
   resolveEveryOccurrence,
+  ScheduleId,
 } from '@deepseek-ai/dsh-schedule';
 import type { ScheduleRecord, OneShotScheduleRecord, EveryScheduleRecord } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT } from './domain.js';
@@ -247,6 +248,70 @@ export class UserScheduleRuntime {
       await Promise.allSettled(pending);
     })();
     return this.disposal;
+  }
+
+  /**
+   * 用户主动插话（QueueDock「插话发送」语义）：把指定 id 的提醒内容**立即**推给 agent。
+   * - 仅 one-shot（at / after）支持；every 类型因 batch framing 需要更多 plumbing，留待后续
+   * - **不要求已到点**：与 QueueDock 一致，排队中的内容随时可被主动插话提前送达；
+   *   成功即出列（写 dispatch），不会到点再 fire 一次
+   * - 与 fold/dispatch 共享「单一真相」：steer 成功后立即写 `schedule/change: dispatch`，
+   *   否则后续 fold 路径会再 fire 一次（双触发）
+   *
+   * 为什么不用 `runMaintenance`：插话按钮只在 overdue 时出现，而 overdue 恰恰发生在
+   * agent 正在跑（auto-driver 只能 waitForIdle）——`runMaintenance` 在 agent 有活跃工作
+   * 时直接 throw（`agent "..." already has active work`），会让插话在唯一可见的场景里
+   * 必然失败（曾以 `internal_error: 插话执行失败` 落日志）。`agent.steer` 是为「in-flight
+   * 也要在下一个 step boundary 立即消费」设计的原语：空闲则开 turn、忙碌则排到边界，
+   * 不需要空闲。dispatch 事件在同一同步块内 append，与 auto-driver 的 fold 无并发窗口
+   * （JS 单线程；两者要么整块先执行要么整块后执行，后执行者 fold 即见 dispatch 而跳过）。
+   */
+  async steerById(id: string): Promise<{ ok: true; id: string; steered: true } | { ok: false; code: string; message: string }> {
+    if (this.stopping || this.disposal !== undefined) {
+      return { ok: false, code: 'stopping', message: '调度器已停止。' };
+    }
+    const scheduleId = ScheduleId(id);
+    let claimed: { kind: 'one-shot'; records: readonly OneShotScheduleRecord[]; delivery: UserScheduleDelivery } | null = null;
+    try {
+      const claimedState = foldUserState(this.agent.session);
+      const folded = claimedState.folded.active.filter((record) => claimedState.owned.has(record.id));
+      const record = folded.find((r) => r.id === scheduleId);
+      if (record === undefined) {
+        return { ok: false, code: 'schedule_not_found', message: '指定的提醒不存在或已派发。' };
+      }
+      if (record.kind === 'every') {
+        return { ok: false, code: 'unsupported_kind', message: 'every 类提醒的插话暂未支持。' };
+      }
+      const delivery = claimedState.delivery.get(scheduleId) ?? 'context';
+      claimed = { kind: 'one-shot', records: [record], delivery };
+    } catch (error) {
+      this.ctx.logger.warn(`session-scheduler: steer fold 失败: ${renderThrown(error)}`);
+      return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
+    }
+
+    try {
+      // 同一同步块内：重 fold（防 auto-driver 刚把 dispatch 写掉的竞态）→ steer →
+      // append dispatch。agent.steer 只入 inbox（next-step + wake），不要求空闲。
+      const reState = foldUserState(this.agent.session);
+      const reRecord = reState.folded.active.find((r) => r.id === scheduleId);
+      if (reRecord === undefined || claimed === null) {
+        // 已被并发 fold 派发（auto-driver 抢先），端态与插话成功一致，不重复投。
+        return { ok: true, id, steered: true };
+      }
+      const message = this.buildMessage(claimed, reState.delivery);
+      this.agent.steer(message);
+      this.agent.session.append('schedule/change', { version: 1, operation: 'dispatch', id: scheduleId });
+    } catch (error) {
+      this.ctx.logger.warn(`session-scheduler: steer 失败 agent "${this.agent.id}": ${renderThrown(error)}`);
+      return { ok: false, code: 'internal_error', message: '插话执行失败。' };
+    }
+    // 同步落盘，确保 fold 路径下次扫描看到 dispatch 标记。
+    try {
+      await this.ctx.sessions.flush(this.agent.session);
+    } catch {
+      /* 落盘失败不影响 steer 已投出的语义；下次 fold 仍可能重触发，作为最坏情况接受 */
+    }
+    return { ok: true, id, steered: true };
   }
 
   /** 执行一次用户提醒决策与派发。 */

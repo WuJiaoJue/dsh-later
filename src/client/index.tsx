@@ -11,10 +11,13 @@
  *
  * rc.7 兼容性：所需服务通过模块级 `inject` 数组声明（fiber 激活门控），
  * apply 内用 `ctx.get(name)` 读取；缺失时静默跳过（不阻塞会话其他能力）。
+ *
+ * Context 服务类型增强在 `./runtime-augment.d.ts`：声明 `slots`/`sessions`/
+ * `settingsScope`/`locale` 的最小契约，避免引入 `@deepseek-ai/dsh-client-*`
+ * 这一族浏览器运行时包作为 NPM 依赖（它们是宿主注入产物，pnpm 解析预发布版
+ * 会带来 hoisting/range 噪音）。
  * @module dsh-session-scheduler/client
  */
-import type {} from '@deepseek-ai/dsh-client-runtime/client';
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { Context } from '@deepseek-ai/cordis';
 import { name } from '../domain.js';
 import { injectStyles } from './styles.js';
@@ -24,6 +27,7 @@ import { SchedulerSettingsCard } from './components/SchedulerSettingsCard.js';
 import { mountReminderToastHost } from './toast.jsx';
 import type { SchedButtonInjected } from './components/SchedButton.js';
 import type { ScheduleDockInjected } from './components/ScheduleDock.js';
+import { mountSessionPresence, type PresenceLocaleLike, type PresenceSessionsLike } from './session-presence.js';
 
 /** Filled slot：输入框右侧工具行。 */
 const INPUT_RIGHT_SLOT = 'conversation.input.right';
@@ -34,7 +38,7 @@ const inject = ['slots', 'sessions', 'conversation', 'settingsScope', 'locale'];
 /** Locale 字典命名空间（locale 命名空间允许点分）。 */
 const NS = 'settings.plugins.session-scheduler';
 
-/** Settings 命名空间（必须与 host 端 settingsNamespace('dsh-session-scheduler') 一致）。 */
+/** Settings 命名空间（必须与 host 端注册的字符串一致：dsh-session-scheduler）。 */
 const SETTINGS_NS = 'dsh-session-scheduler';
 
 /**
@@ -56,6 +60,17 @@ function apply(ctx: Context): void {
   ctx.effect(() => injectStyles(), 'dsh-session-scheduler: styles');
   // 提醒到达 toast 宿主（幂等；随插件生命周期卸载）。
   ctx.effect(() => mountReminderToastHost(), 'dsh-session-scheduler: toast host');
+  // 侧栏会话行「定时状态」badge（docs/ui/09 路线 B）：数据源为 sessions.list
+  // 的行级 projectionValues（session.list 基线覆盖全会话，当前会话由投影帧
+  // 实时推进），周期 refresh() 读 RPC 补时效。服务缺失时静默跳过。
+  ctx.effect(
+    () =>
+      mountSessionPresence({
+        sessions: sessions as unknown as PresenceSessionsLike,
+        ...(locale === undefined ? {} : { locale: locale as unknown as PresenceLocaleLike }),
+      }),
+    'dsh-session-scheduler: presence',
+  );
 
   // 注册 locale 字典
   if (locale !== undefined) {
@@ -67,6 +82,10 @@ function apply(ctx: Context): void {
         expand: '展开设置',
         collapse: '收起设置',
         readOnly: '本部署的设置为只读。',
+        showButtonLabel: '显示定时按钮',
+        showButtonHint: '关闭后输入框右侧不再显示时钟按钮；已创建的提醒仍会照常触发，并在输入框下方的待发送列表中显示。',
+        optionOn: '显示',
+        optionOff: '隐藏',
         maxSchedulesLabel: '单会话任务上限',
         maxSchedulesHint: '单个会话内允许创建的最大定时任务数量。',
         smartWindowHint: '用于「工作时间」芯片与智能模式自动排期。',
@@ -93,6 +112,10 @@ function apply(ctx: Context): void {
         expand: 'Show settings',
         collapse: 'Hide settings',
         readOnly: 'Settings for this deployment are read-only.',
+        showButtonLabel: 'Show schedule button',
+        showButtonHint: 'Hide the clock button on the input bar. Existing reminders keep firing and stay visible in the dock below the composer.',
+        optionOn: 'Show',
+        optionOff: 'Hide',
         maxSchedulesLabel: 'Max schedules per session',
         maxSchedulesHint: 'Maximum number of scheduled reminders allowed per session.',
         smartWindowHint: 'Used by the Work-hours chip and smart auto-scheduling.',

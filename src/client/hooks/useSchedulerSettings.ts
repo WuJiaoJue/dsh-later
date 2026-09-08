@@ -30,29 +30,70 @@ export interface SchedulerSettingsScopeLike {
   subscribe(callback: () => void): () => void;
 }
 
+/** 解析后的提示字符上限（与宿主 resolvePromptLimits 保持同源）。 */
+export interface ResolvedPromptLimits {
+  readonly maxChars: number;
+  readonly allowLong: boolean;
+}
+
 /** 解析后的插件设置（面板视角）。 */
 export interface ResolvedSchedulerSettings {
   /** 设置层是否已就绪（false = 回退默认值）。 */
   ready: boolean;
+  /** 是否显示输入框右侧的定时按钮（默认 true；仅显式 false 隐藏）。 */
+  showButton: boolean;
   /** 智能时段配置（非法字段已逐项回落默认）。 */
   smartWindow: SmartWindowConfig;
+  /** 提示字符上限（allowLong=false 时恒等于 1000）。 */
+  promptLimits: ResolvedPromptLimits;
 }
+
+/** 客户端默认上限：必须与 host `DEFAULT_MAX_PROMPT_CHARS` 一致。 */
+const CLIENT_DEFAULT_MAX_PROMPT_CHARS = 1000;
+
+const FALLBACK_PROMPT: ResolvedPromptLimits = {
+  allowLong: false,
+  maxChars: CLIENT_DEFAULT_MAX_PROMPT_CHARS,
+};
 
 const FALLBACK: ResolvedSchedulerSettings = {
   ready: false,
+  showButton: true,
   smartWindow: sanitizeSmartWindowConfig(undefined),
+  promptLimits: FALLBACK_PROMPT,
 };
+
+/** 从原始快照推导 promptLimits；非法值一律回落到 1000 安全下限。 */
+function resolvePromptLimitsFromSnapshot(snap: SchedulerSettingsSnapshot): ResolvedPromptLimits {
+  if (snap.status !== 'ready') return FALLBACK_PROMPT;
+  const value = (snap.value ?? {}) as Record<string, unknown>;
+  const allowLong = value['allowLongPrompts'] === true;
+  const raw = value['maxPromptChars'];
+  const valid =
+    typeof raw === 'number' && Number.isFinite(raw) && raw >= 1 && Math.floor(raw) === raw;
+  if (allowLong && valid) return { allowLong: true, maxChars: raw };
+  return FALLBACK_PROMPT;
+}
 
 /** 解析宿主快照（引用）为面板可用值；引用不变时结果由 useMemo 稳定记忆。 */
 function resolveFromSnapshot(snap: SchedulerSettingsSnapshot): ResolvedSchedulerSettings {
   if (snap.status !== 'ready') {
-    return { ready: false, smartWindow: FALLBACK.smartWindow };
+    return {
+      ready: false,
+      showButton: true,
+      smartWindow: FALLBACK.smartWindow,
+      promptLimits: FALLBACK_PROMPT,
+    };
   }
+  const value = (snap.value ?? {}) as Record<string, unknown>;
   return {
     ready: true,
+    // 仅显式 false 隐藏；缺失/非法一律回退显示（与 schema 默认 true 同源）。
+    showButton: value['showButton'] !== false,
     smartWindow: sanitizeSmartWindowConfig(
-      (snap.value ?? {}) as Partial<Record<keyof SmartWindowConfig, unknown>>,
+      value as Partial<Record<keyof SmartWindowConfig, unknown>>,
     ),
+    promptLimits: resolvePromptLimitsFromSnapshot(snap),
   };
 }
 
@@ -85,5 +126,7 @@ export function useSchedulerSettings(
 /** 让无设置时面板仍能拿到稳定默认（仅供内部测试或特殊兜底）。 */
 export const DEFAULT_RESOLVED_SETTINGS: ResolvedSchedulerSettings = {
   ready: false,
+  showButton: true,
   smartWindow: DEFAULT_SMART_WINDOW,
+  promptLimits: FALLBACK_PROMPT,
 };

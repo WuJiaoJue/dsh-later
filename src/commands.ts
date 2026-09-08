@@ -19,13 +19,29 @@ import {
   userScheduleDelete,
   userScheduleEditPrompt,
   userScheduleList,
+  resolvePromptLimits,
 } from './user-tools.js';
+import type { PromptLimits } from './user-tools.js';
 import { DEFAULT_MAX_SCHEDULES } from './user-tools.js';
 import { epochFromLocal, localFieldsOf } from './smart-window.js';
 import { detectTimeZone, formatAbsolute, formatRelative } from './time-utils.js';
 
 /** 用户创建/删除成功后的通知回调（宿主用它重驱用户调度器）。 */
 export type UserChangeNotifier = (agent: Agent) => void;
+
+/**
+ * 用户主动插话回调（GUI「插话发送」按钮触发）。handler 返回 steer 结果；
+ * - `{ ok: true, steered: true }` 表示已成功把消息立即推给 in-flight agent；
+ * - `{ ok: false, code }` 表示拒绝（未到点 / 不存在 / every 类型暂不支持）。
+ * @module dsh-session-scheduler/commands
+ */
+export type UserSteerHandler = (
+  agent: Agent,
+  id: string,
+) => Promise<
+  | { readonly ok: true; readonly id: string; readonly steered: true }
+  | { readonly ok: false; readonly code: string; readonly message: string }
+>;
 
 /** 命令名前缀（避免与其他插件命令冲突）。 */
 const PREFIX = 'user-schedule';
@@ -329,8 +345,16 @@ function resolveTarget(matched: TargetMatch, now: number, timeZone: string): Tar
  *  - `明天 15:32` `后天9点` `大后天 10:00`
  *  - `8月21日 15:32` `08-21 15:32`
  *  - `2026-08-21 15:32` `0821-1532` `20260821-1532`
+ *
+ * `limits` 可选：未传时回落到 `DEFAULT_MAX_PROMPT_CHARS=1000`，错误文案里
+ * 的字符数与 settings 实际生效值一致。
  */
-export function parseScheduleInput(raw: string, now: number, timeZone: string): ParsedScheduleInput {
+export function parseScheduleInput(
+  raw: string,
+  now: number,
+  timeZone: string,
+  limits: PromptLimits = { allowLong: false, maxChars: 1000 },
+): ParsedScheduleInput {
   const s = normalizeInput(raw);
   if (s.length === 0) return { ok: false, error: '用法：/schedule <时间> <内容>，如 /schedule 1532 检查构建结果' };
 
@@ -343,7 +367,9 @@ export function parseScheduleInput(raw: string, now: number, timeZone: string): 
 
   const content = s.slice(matched.consumed).trim();
   if (content.length === 0) return { ok: false, error: '提醒内容不能为空。' };
-  if (content.length > 1000) return { ok: false, error: '提醒内容不能超过 1000 字符。' };
+  if (content.length > limits.maxChars) {
+    return { ok: false, error: `提醒内容不能超过 ${limits.maxChars} 字符。` };
+  }
 
   return { ok: true, target: resolved.target, content };
 }
@@ -371,21 +397,33 @@ export function parseScheduleSpec(spec: string, now: number, timeZone: string): 
 /** 命令工厂：返回三个命令定义。
  *
  * `getSettings` 支持传数字（静态，兼容旧签名）、返回 `{maxSchedules}` 的 getter，
- * 或 `() => number` getter——传 getter 时每次调用读取设置页的**实时**上限
- * （设置保存后即时生效，按需 scope.get()，与 dsh-smooth-stream 一致）。
+ * `() => { maxSchedules, allowLongPrompts, maxPromptChars }` 的 getter——传 getter
+ * 时每次调用读取设置页的**实时**上限（设置保存后即时生效，按需 scope.get()，
+ * 与 dsh-smooth-stream 一致）。
  */
 export function userScheduleCommands(
   ctx: Context,
-  getSettings: number | (() => number) | (() => { maxSchedules: number }) = DEFAULT_MAX_SCHEDULES,
+  getSettings:
+    | number
+    | (() => number)
+    | (() => { maxSchedules: number; allowLongPrompts?: boolean; maxPromptChars?: number }) = DEFAULT_MAX_SCHEDULES,
   onUserChange?: UserChangeNotifier,
+  onUserSteer?: UserSteerHandler,
 ): CommandDefinition[] {
-  const resolveMaxSchedules = (): number => {
+  const resolveSettings = (): { maxSchedules: number; limits: PromptLimits } => {
     if (typeof getSettings === 'function') {
       const value = getSettings();
-      if (typeof value === 'number') return value;
-      return value?.maxSchedules ?? DEFAULT_MAX_SCHEDULES;
+      if (typeof value === 'number') {
+        return { maxSchedules: value, limits: { allowLong: false, maxChars: 1000 } };
+      }
+      const maxSchedules = value?.maxSchedules ?? DEFAULT_MAX_SCHEDULES;
+      const limits = resolvePromptLimits({
+        allowLongPrompts: value?.allowLongPrompts,
+        maxPromptChars: value?.maxPromptChars,
+      });
+      return { maxSchedules, limits };
     }
-    return getSettings;
+    return { maxSchedules: getSettings, limits: { allowLong: false, maxChars: 1000 } };
   };
   const create: CommandDefinition = {
     name: `${PREFIX}-create`,
@@ -394,7 +432,8 @@ export function userScheduleCommands(
     handler: async (invocation: CommandInvocation): Promise<CommandResult> => {
       const parsed = parsePayload(invocation.rawInput);
       if (!parsed.ok) return renderError(parsed.text);
-      const result = await userScheduleCreate(parsed.value, invocation.agent, ctx, resolveMaxSchedules());
+      const { maxSchedules, limits } = resolveSettings();
+      const result = await userScheduleCreate(parsed.value, invocation.agent, ctx, maxSchedules, undefined, limits);
       if (!result.ok) {
         return { kind: 'error', text: `${result.code}: ${result.message}` };
       }
@@ -451,7 +490,8 @@ export function userScheduleCommands(
       const parsed = parsePayload(invocation.rawInput);
       if (!parsed.ok) return renderError(parsed.text);
       const value = parsed.value as Record<string, unknown>;
-      const result = await userScheduleEditPrompt(value['id'], value['prompt'], invocation.agent, ctx);
+      const { limits } = resolveSettings();
+      const result = await userScheduleEditPrompt(value['id'], value['prompt'], invocation.agent, ctx, limits);
       if (!result.ok) {
         return { kind: 'error', text: `${result.code}: ${result.message}` };
       }
@@ -464,13 +504,45 @@ export function userScheduleCommands(
     },
   };
 
+  // 用户主动插话（GUI「插话发送」按钮）：把已到点的 reminder 立即 steer 进 agent。
+  // 仅 one-shot 支持；every 类提醒因 batch framing 需要更多 plumbing 暂未开放。
+  const steer: CommandDefinition = {
+    name: `${PREFIX}-steer-now`,
+    description: '插话发送：把指定 id 的提醒立即推给 agent（仅 one-shot；GUI 内部通道）。',
+    recordInput: false,
+    handler: async (invocation: CommandInvocation): Promise<CommandResult> => {
+      if (onUserSteer === undefined) {
+        return { kind: 'error', text: '插话处理器未注入。' };
+      }
+      const parsed = parsePayload(invocation.rawInput);
+      if (!parsed.ok) return renderError(parsed.text);
+      const id = (parsed.value as Record<string, unknown>)['id'];
+      if (typeof id !== 'string' || id.length === 0) {
+        return { kind: 'error', text: 'invalid_rule: schedule id 必填。' };
+      }
+      try {
+        const result = await onUserSteer(invocation.agent, id);
+        if (!result.ok) {
+          return { kind: 'error', text: `${result.code}: ${result.message}` };
+        }
+        return { kind: 'success', text: JSON.stringify(result) };
+      } catch (error) {
+        return {
+          kind: 'error',
+          text: `steer_failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    },
+  };
+
   // 人类友好快捷命令：/schedule <时间> <内容>（到点以「上下文注入」提醒注入）与
   // /later <时间> <内容>（到点以「我」的身份发送 = 延迟发送语义，产品取舍见
   // 下方注释）。两者共享同一解析与创建逻辑，仅 delivery 不同。
   const buildQuickHandler = (delivery: 'context' | 'user') => {
     return async (invocation: CommandInvocation): Promise<CommandResult> => {
       const timeZone = detectTimeZone();
-      const parsed = parseScheduleInput(invocation.rawInput, Date.now(), timeZone);
+      const { maxSchedules, limits } = resolveSettings();
+      const parsed = parseScheduleInput(invocation.rawInput, Date.now(), timeZone, limits);
       if (!parsed.ok) return renderError(parsed.error);
 
       const content = parsed.content;
@@ -484,8 +556,9 @@ export function userScheduleCommands(
         input,
         invocation.agent,
         ctx,
-        resolveMaxSchedules(),
+        maxSchedules,
         { trustedDelivery: delivery },
+        limits,
       );
       if (!result.ok) {
         return { kind: 'error', text: `${result.code}: ${result.message}` };
@@ -535,16 +608,20 @@ export function userScheduleCommands(
     handler: buildQuickHandler('user'),
   };
 
-  return [create, list, del, edit, quick, later];
+  return [create, list, del, edit, steer, quick, later];
 }
 
 /** 注册三个命令，返回统一 disposer。 */
 export function registerUserScheduleCommands(
   ctx: Context,
-  getSettings: number | (() => number) | (() => { maxSchedules: number }) = DEFAULT_MAX_SCHEDULES,
+  getSettings:
+    | number
+    | (() => number)
+    | (() => { maxSchedules: number; allowLongPrompts?: boolean; maxPromptChars?: number }) = DEFAULT_MAX_SCHEDULES,
   onUserChange?: UserChangeNotifier,
+  onUserSteer?: UserSteerHandler,
 ): () => void {
-  const disposers = userScheduleCommands(ctx, getSettings, onUserChange).map((definition) => {
+  const disposers = userScheduleCommands(ctx, getSettings, onUserChange, onUserSteer).map((definition) => {
     try {
       return ctx.commands.register(definition);
     } catch (error) {

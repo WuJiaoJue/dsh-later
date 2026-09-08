@@ -17,6 +17,7 @@
   "include": [
     "src/client/**/*.ts",
     "src/client/**/*.tsx",
+    "src/presence.ts",
     "src/smart-window.ts",
     "src/time-utils.ts",
     "src/domain.ts"

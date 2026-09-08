@@ -28,15 +28,22 @@ const zh = {
   /** 任务列表 */
   taskListTitle: '已设定',
   emptyTasks: '暂无定时任务',
-  deleteTask: '删除',
+  deleteTask: '删除提醒',
   /** 编辑提醒内容（dock 行内） */
-  editTask: '修改内容',
+  editTask: '编辑提醒',
   editSave: '保存',
   editCancel: '取消',
   editErrEmpty: '内容不能为空',
   editErrFailed: '修改失败：{message}',
   editErrNotAccepted: '命令未被受理',
   editErrCommandFailed: '命令失败',
+  /** 主动插话发送：立即把提醒内容推给 agent（QueueDock「插话发送」语义） */
+  steerTask: '插话发送',
+  steerAlreadySent: '已插话',
+  steerFailed: '插话失败：{message}',
+  steerUnsupportedKind: '周期提醒暂不支持插话',
+  /** dock 折叠头计数（QueueDock「N 条排队消息」样式） */
+  panelCount: '{n} 条定时提醒',
   /** 精准倒计时（dock 行 + 折叠头） */
   countdownLeft: '剩',
   dueAnyMoment: '即将发送',
@@ -56,6 +63,16 @@ const zh = {
   /** 客户端本地错误（hook 抛令牌，UI 按当前语言翻译） */
   errNoSession: '当前无会话',
   errNotAcceptedStashed: '命令未被受理，已暂存本地',
+  /** 侧栏会话行「定时状态」badge（docs/ui/09） */
+  presenceBadgeAria: '有 {n} 条定时提醒，下次 {time}',
+  presenceOverdueAria: '有 {n} 条定时提醒已到期，等待发送',
+  presenceTooltip: '下次 {time} · {n} 条任务',
+  presenceOverdueTooltip: '已到期 · {n} 条任务（等待会话空闲发送）',
+  relMinutes: '{m} 分后',
+  relHours: '{h} 小时后',
+  relTomorrow: '明天 {time}',
+  relDate: '{date} {time}',
+  relClock: '{time}',
 } as const;
 
 /** 客户端本地错误令牌：hook 层抛出、组件层经字典翻译（避免 hook 依赖 locale）。 */
@@ -78,7 +95,7 @@ const en: { [K in keyof typeof zh]: string } = {
   tomorrow: 'Tomorrow',
   taskListTitle: 'Scheduled',
   emptyTasks: 'No scheduled reminders',
-  deleteTask: 'Delete',
+  deleteTask: 'Delete reminder',
   editTask: 'Edit reminder',
   editSave: 'Save',
   editCancel: 'Cancel',
@@ -86,6 +103,11 @@ const en: { [K in keyof typeof zh]: string } = {
   editErrFailed: 'Edit failed: {message}',
   editErrNotAccepted: 'Command was not accepted',
   editErrCommandFailed: 'Command failed',
+  steerTask: 'Send now',
+  steerAlreadySent: 'Steered',
+  steerFailed: 'Steer failed: {message}',
+  steerUnsupportedKind: 'Recurring reminders can\'t be steered',
+  panelCount: '{n} scheduled reminders',
   countdownLeft: 'in',
   dueAnyMoment: 'Sending soon',
   sending: 'Sending…',
@@ -99,6 +121,15 @@ const en: { [K in keyof typeof zh]: string } = {
   errDeleteFailed: 'Delete failed: {message}',
   errNoSession: 'No active session',
   errNotAcceptedStashed: 'Command was not accepted; saved locally',
+  presenceBadgeAria: '{n} scheduled reminder(s), next at {time}',
+  presenceOverdueAria: '{n} scheduled reminder(s) due, waiting to send',
+  presenceTooltip: 'Next at {time} · {n} task(s)',
+  presenceOverdueTooltip: 'Due · {n} task(s) (sends when the session is idle)',
+  relMinutes: 'in {m} min',
+  relHours: 'in {h} h',
+  relTomorrow: 'Tomorrow {time}',
+  relDate: '{date} {time}',
+  relClock: '{time}',
 };
 
 /** 单语言文案字典类型（宽化为 string，zh/en 通用）。 */

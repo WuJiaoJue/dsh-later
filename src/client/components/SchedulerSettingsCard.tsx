@@ -1,10 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client';
 import { isValidHhmm } from '../../smart-window.js';
+
+/**
+ * 宿主 settingsScope 服务的最小结构视图（client 侧契约，仅列出本组件用到的成员）。
+ * 不从 @deepseek-ai/dsh-client-runtime/client 导入：该包是 0.1.1 内核特有，0.1.2 已
+ * 拆走；且同名 SettingsScope 在 host（dsh-settings）与 client 两侧成员并不同。
+ */
+interface ScopeSnapshot<T> {
+  status: 'loading' | 'ready' | 'unavailable';
+  value: T | undefined;
+  base: unknown;
+  user: unknown;
+  writable: boolean;
+}
+
+interface SettingsScope<T> {
+  getSnapshot(): ScopeSnapshot<T>;
+  subscribe(listener: () => void): () => void;
+  set(field: string, value: unknown): Promise<void>;
+  unset(field: string): Promise<void>;
+}
 
 /** 设置面存储形态（与 SchedulerSettingsSchema 一致，缺省字段表示回退默认）。 */
 export interface SchedulerSettings {
+  showButton?: boolean;
   maxSchedules?: number;
   workStart?: string;
   workEnd?: string;
@@ -15,10 +35,12 @@ export interface SchedulerSettings {
 
 /** 字段元数据（顺序固定，便于稳定渲染）。 */
 type FieldDef =
+  | { readonly kind: 'boolean'; readonly key: 'showButton'; readonly labelKey: string; readonly hintKey?: string; readonly defaultValue: boolean }
   | { readonly kind: 'number'; readonly key: 'maxSchedules'; readonly labelKey: string; readonly hintKey: string; readonly defaultValue: number }
   | { readonly kind: 'time'; readonly key: 'workStart' | 'workEnd' | 'lunchStart' | 'lunchEnd' | 'eveningEnd'; readonly labelKey: string; readonly hintKey?: string };
 
 const FIELDS: readonly FieldDef[] = [
+  { kind: 'boolean', key: 'showButton', labelKey: 'showButtonLabel', hintKey: 'showButtonHint', defaultValue: true },
   { kind: 'number', key: 'maxSchedules', labelKey: 'maxSchedulesLabel', hintKey: 'maxSchedulesHint', defaultValue: 100 },
   { kind: 'time', key: 'workStart', labelKey: 'workStartLabel', hintKey: 'smartWindowHint' },
   { kind: 'time', key: 'workEnd', labelKey: 'workEndLabel' },
@@ -84,14 +106,16 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
     });
   }, [scope]);
 
-  if (snapshot.status === 'unavailable') return null; // 命名空间未暴露时不显示卡片
+  if (snapshot.status === 'unavailable') return <></>; // 命名空间未暴露时不显示卡片
   if (snapshot.status !== 'ready') {
     if (snapshot.status === 'loading') return <div className="ss-hint">{t('loading')}</div>;
     return <div className="ss-hint">{t('unavailable')}</div>;
   }
 
-  const value = snapshot.value ?? {};
-  const base = snapshot.base ?? {};
+  // Partial<SchedulerSettings> 兜底：`?? {}` 让 TS 能以显式类型 narrow 出字段；
+  // 索引访问通过 type guard 处理 undefined；运行时仍按 `value[key] ?? default`。
+  const value: Partial<SchedulerSettings> = snapshot.value ?? {};
+  const base: Partial<SchedulerSettings> = (snapshot.base as Partial<SchedulerSettings> | undefined) ?? {};
   const user = snapshot.user;
   const writable = snapshot.writable === true;
 
@@ -109,6 +133,10 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
       const v = value[field.key];
       return v === undefined ? '' : String(v);
     }
+    if (field.kind === 'boolean') {
+      const v = value[field.key];
+      return v === false ? 'false' : 'true';
+    }
     const v = value[field.key];
     return v ?? '';
   };
@@ -118,6 +146,10 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
     if (field.kind === 'number') {
       const v = base[field.key];
       return String(v ?? field.defaultValue);
+    }
+    if (field.kind === 'boolean') {
+      const v = base[field.key];
+      return v === false ? 'false' : 'true';
     }
     const v = base[field.key];
     return v ?? '';
@@ -132,6 +164,7 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
       if (!Number.isFinite(num) || num < 1 || !Number.isInteger(num)) return t('invalidLabel');
       return null;
     }
+    if (field.kind === 'boolean') return null; // 取值恒为 'true'/'false'，无需校验
     if (raw.trim().length === 0) return null; // 空 = unset
     if (!isValidHhmm(raw)) return t('invalidTimeLabel');
     return null;
@@ -173,7 +206,12 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
           continue;
         }
         const field = FIELDS.find((entry) => entry.key === key);
-        const coerced = field?.kind === 'number' ? Number(p.value) : p.value;
+        const coerced =
+          field?.kind === 'number'
+            ? Number(p.value)
+            : field?.kind === 'boolean'
+              ? p.value === 'true'
+              : p.value;
         await scope.set(key as keyof SchedulerSettings, coerced as never);
       }
       setPending({});
@@ -244,17 +282,31 @@ export function SchedulerSettingsCard({ scope, t }: SchedulerSettingsCardProps):
                     </span>
                   )}
                 </div>
-                <input
-                  id={fieldId}
-                  type={isTime ? 'time' : 'text'}
-                  inputMode={isTime ? undefined : 'numeric'}
-                  className={invalid !== null ? 'ss-input ss-inputInvalid' : 'ss-input'}
-                  aria-invalid={invalid !== null || undefined}
-                  value={displayValue(field)}
-                  placeholder={field.kind === 'number' ? String(field.defaultValue) : undefined}
-                  disabled={!writable || saving}
-                  onChange={(event) => handleFieldEdit(field, event.target.value)}
-                />
+                {field.kind === 'boolean' ? (
+                  <select
+                    id={fieldId}
+                    className={invalid !== null ? 'ss-input ss-inputInvalid' : 'ss-input'}
+                    aria-invalid={invalid !== null || undefined}
+                    value={displayValue(field) === 'false' ? 'false' : 'true'}
+                    disabled={!writable || saving}
+                    onChange={(event) => handleFieldEdit(field, event.target.value)}
+                  >
+                    <option value="true">{t('optionOn')}</option>
+                    <option value="false">{t('optionOff')}</option>
+                  </select>
+                ) : (
+                  <input
+                    id={fieldId}
+                    type={isTime ? 'time' : 'text'}
+                    inputMode={isTime ? undefined : 'numeric'}
+                    className={invalid !== null ? 'ss-input ss-inputInvalid' : 'ss-input'}
+                    aria-invalid={invalid !== null || undefined}
+                    value={displayValue(field)}
+                    placeholder={field.kind === 'number' ? String(field.defaultValue) : undefined}
+                    disabled={!writable || saving}
+                    onChange={(event) => handleFieldEdit(field, event.target.value)}
+                  />
+                )}
                 {invalid !== null || (hintKey !== undefined && t(hintKey).length > 0) ? (
                   <p className={invalid !== null ? 'ss-card-invalid' : 'ss-hint'}>
                     {invalid !== null ? invalid : t(hintKey as string)}

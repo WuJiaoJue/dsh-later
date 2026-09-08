@@ -38,10 +38,10 @@ export interface SchedButtonProps extends SchedButtonInjected {
   inputActions?: { setDraft(text: string): void };
 }
 
-export function SchedButton(props: SchedButtonProps): JSX.Element {
+export function SchedButton(props: SchedButtonProps): JSX.Element | null {
   const { callCommand, sessionId, inputActions, input, useProjection, useInput, locale, schedulerScope } = props;
   const { lang, t } = useSchedT(locale);
-  const { smartWindow } = useSchedulerSettings(schedulerScope);
+  const { smartWindow, promptLimits, showButton } = useSchedulerSettings(schedulerScope);
   const [open, setOpen] = useState(false);
 
   const {
@@ -76,6 +76,11 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
       window.removeEventListener('keydown', onKey, true);
     };
   }, [open, reposition]);
+
+  // 设置「显示定时按钮」关闭时隐藏整个插槽条目（含面板入口）。
+  // 提醒触发（宿主调度）与 dock 列表不受影响；所有 hook 均已在此前调用，
+  // 提前返回不违反 React hooks 顺序约束。
+  if (!showButton) return null;
 
   const handleCreateWithErrorBoundary = async (inputPayload: CreateCommandPayload): Promise<void> => {
     try {
@@ -117,6 +122,7 @@ export function SchedButton(props: SchedButtonProps): JSX.Element {
             onDelete={(id) => void handleDelete(id)}
             bottom={anchorBottom}
             smartWindow={smartWindow}
+            promptLimits={promptLimits}
           />
         </>
       )}
