@@ -18,10 +18,10 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 ## Feature overview
 
-- **⏰ Input-bar button**: one click opens the schedule panel — smart time slots / custom time / send preview / pending list / countdown chip.
-- **🗂️ Pending dock**: a list above the input box; each item can be **cancelled** individually or **edited inline** with ✎.
+- **Input-bar timer button**: one click opens the schedule panel — smart time slots / custom time / send preview / pending list / countdown chip.
+- **Pending dock**: a list above the input box; each item can be **cancelled** individually or **edited inline** via its edit icon.
 - **`/later` delayed send**: deliver *the text you are typing right now* later, as yourself (distinct from reminders — see the [mental model](#mental-model-reminder-vs-delayed-send)).
-- **🟣 Sidebar presence indicator**: sessions with active reminders show a pixel clock in the sidebar (purple = scheduled · amber = fires within 5 min · red = overdue); hover shows count and next fire time.
+- **Sidebar presence indicator**: conversations with active reminders show a pixel clock in the sidebar (purple = scheduled · amber = fires within 5 min · red = overdue); hover shows count and next fire time.
 - **Fires with the page closed**: reminders persist server-side and arrive on time across devices.
 - **Anti-spoofing**: due reminders arrive as a `Reminder` notice — they never impersonate you.
 - **Multilingual**: follows the DSH UI language (Chinese / English), live without reload.
@@ -31,11 +31,11 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 ## Screenshots
 
-**⏰ Schedule panel** — quick slots / custom time / pending list:
+**Schedule panel** — quick slots / custom time / pending list:
 
 <img src="docs/screenshot-panel.png" width="340" alt="Schedule panel"/>
 
-**Pending dock** — countdown rows above the input box (✎ inline edit / ✕ cancel):
+**Pending dock** — countdown rows above the input box (inline edit / cancel):
 
 <img src="docs/screenshot-dock.png" width="700" alt="Pending dock and input box"/>
 
@@ -56,16 +56,16 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 | Action | Timing | Who "speaks" | What you see |
 |---|---|---|---|
 | Enter in the input box | Now | You | Normal user bubble |
-| ⏰ panel / `/schedule <time> <content>` | When due | Reminder | `Reminder · HH:MM · content` notice row |
+| Schedule panel / `/schedule <time> <content>` | When due | Reminder | `Reminder · HH:MM · content` notice row |
 | `/later <time> <content>` | When due | As yourself | Normal user bubble |
 
 > **`/schedule` is not "delayed send"**: pressing Enter on `/schedule …` sends it *immediately* as a user message; only the **newly generated reminder** is deferred. If you want "say this later as me", use **`/later`**.
 
 ```
-┌─ Now ─────────────┐   ┌─ Reminder (/schedule, ⏰ panel) ─┐   ┌─ Delayed send (/later) ──┐
-│ Enter to send     │   │ Injected notice when due        │   │ Re-sent as "me" when due │
-│ User bubble       │   │ Never impersonates you          │   │ User bubble              │
-└───────────────────┘   └─────────────────────────────────┘   └──────────────────────────┘
+┌─ Now ─────────────┐   ┌─ Reminder (/schedule, schedule panel) ┐   ┌─ Delayed send (/later) ──┐
+│ Enter to send     │   │ Injected notice when due              │   │ Re-sent as "me" when due │
+│ User bubble       │   │ Never impersonates you                │   │ User bubble              │
+└───────────────────┘   └───────────────────────────────────────┘   └──────────────────────────┘
 ```
 
 ---
@@ -89,7 +89,7 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 ### Your first reminder
 
-1. Open any conversation — an ⏰ button appears right of the input box;
+1. Open any conversation — a "Schedule" button appears right of the input box;
 2. Click it → pick a smart slot, or enter a custom time and content;
 3. Confirm → a countdown chip appears next to the button and the dock shows the pending item;
 4. When due, a `Reminder` message lands in the conversation — it fires even if you close the page.
@@ -98,7 +98,7 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 ## Usage guide
 
-### ⏰ Schedule panel
+### Schedule panel
 
 | Capability | Description |
 |---|---|
@@ -106,7 +106,7 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 | Custom time | Relative (`in 30 minutes`) or absolute (`today 18:00`) |
 | Send preview | See the exact due-time form before confirming |
 | Task list | All scheduled items, deletable one by one |
-| Cancel all | ✕ on the chip clears every reminder in this conversation |
+| Cancel all | Cancel action on the chip clears every reminder in this conversation |
 
 ### Commands
 
@@ -124,9 +124,9 @@ Conversations with active reminders show a pixel clock in their sidebar row (alo
 
 | Color | Meaning |
 |---|---|
-| 🟣 Purple | Has scheduled reminders |
-| 🟠 Amber | Next fire within 5 minutes |
-| 🔴 Red | Overdue (waiting for the session to become idle) |
+| Purple | Has scheduled reminders |
+| Amber | Next fire within 5 minutes |
+| Red | Overdue (waiting for the session to become idle) |
 
 Hover shows "count · next fire time".
 
@@ -147,7 +147,7 @@ Works out of the box. Adjust in **DSH Settings → Plugins → Session Scheduler
 
 | Field | Description | Default |
 |---|---|---|
-| Show schedule button | Whether ⏰ shows on the input bar (hiding it never affects existing reminders or the dock) | Shown |
+| Show schedule button | Whether the timer button shows on the input bar (hiding it never affects existing reminders or the dock) | Shown |
 | Max schedules per session | Max reminders allowed in one conversation | 100 |
 | Allow long prompts | Lift the 1000-character default cap | Off |
 | Custom cap | Character cap when `allowLongPrompts` is on | 1000 |
