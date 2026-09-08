@@ -1,9 +1,9 @@
 <div align="center">
 
-<img src="docs/icon-schedule-btn.svg?v=1" width="64" alt="⏰"/>
-<img src="docs/icon-edit.svg?v=1" width="64" alt="✏️"/>
-<img src="docs/icon-delete.svg?v=1" width="64" alt="🗑️"/>
-<img src="docs/icon-send.svg?v=1" width="64" alt="⬆️"/>
+<img src="docs/icon-presence.svg?v=1" width="64" alt="🕐"/>
+<img src="docs/icon-presence.svg?v=1" width="64" alt="🕐"/>
+<img src="docs/icon-presence.svg?v=1" width="64" alt="🕐"/>
+<img src="docs/icon-presence.svg?v=1" width="64" alt="🕐"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
