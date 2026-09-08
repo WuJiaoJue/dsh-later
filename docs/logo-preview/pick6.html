@@ -1,0 +1,264 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#0f172a;font:15px/1.5 system-ui,"PingFang SC",sans-serif;padding:24px;color:#e2e8f0}
+.row{display:flex;gap:20px;align-items:flex-start}
+.v{width:512px;text-align:center}
+.v .lab{font-size:17px;font-weight:600;margin-bottom:10px;color:#f1f5f9}
+.strip{margin:20px 0 0;padding:12px 16px;background:#1e293b;border-radius:12px;display:flex;gap:22px;align-items:center}
+.strip em{font-style:normal;font-size:12px;color:#94a3b8}
+.strip .light{background:#f8fafc;border-radius:8px;padding:8px 12px;display:flex;gap:12px;align-items:center}
+</style></head><body><div class="row">
+<div class='v'><div class='lab'>E1｜排队中</div>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <mask id="cutE1">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <circle cx="180" cy="236" r="27" fill="#000"/>
+      <circle cx="256" cy="236" r="27" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE1)"/>
+
+  <!-- 实心白气泡：两个点抠空（typing indicator） -->
+  <g mask="url(#cutE1)">
+    <rect x="108" y="128" width="296" height="216" rx="64" fill="#fff"/>
+    <path d="M162 332 L124 392 L236 338 Z" fill="#fff"/>
+  </g>
+
+  <!-- 第三个点 = 琥珀小钟（定时） -->
+  <circle cx="332" cy="236" r="27" fill="#fbbf24"/>
+  <line x1="332" y1="236" x2="321" y2="226" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+  <line x1="332" y1="236" x2="343" y2="228" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+</svg>
+</div>
+<div class='v'><div class='lab'>E2｜数字定时</div>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101827"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE2)"/>
+
+  <!-- 七段数码管：9:00（琥珀辉光） -->
+  <!-- 9 = A B C D F G ｜ 0 = A B C D E F -->
+  <g fill="#fbbf24" filter="url(#glow)" opacity="0.85">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+  <g fill="#fde68a">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+</svg>
+</div>
+<div class='v'><div class='lab'>E3｜日程格</div>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#059669"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <mask id="cutE3">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <line x1="256" y1="258" x2="206" y2="258" stroke="#000" stroke-width="26" stroke-linecap="round"/>
+      <line x1="256" y1="258" x2="256" y2="206" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="256" cy="258" r="12" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE3)"/>
+
+  <!-- 日历夹环 -->
+  <rect x="191" y="86" width="18" height="52" rx="9" fill="#fff"/>
+  <rect x="303" y="86" width="18" height="52" rx="9" fill="#fff"/>
+
+  <!-- 日历卡（指针负空间抠出） -->
+  <g mask="url(#cutE3)">
+    <rect x="116" y="140" width="280" height="230" rx="52" fill="#fff"/>
+  </g>
+
+  <!-- 琥珀提醒点 -->
+  <circle cx="368" cy="158" r="30" fill="#fbbf24"/>
+</svg>
+</div>
+</div><div class="strip"><em>32px 暗：</em>
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <mask id="cutE1">
+      <rect x="0" y="0" width="32" height="32" fill="#fff"/>
+      <circle cx="180" cy="236" r="27" fill="#000"/>
+      <circle cx="256" cy="236" r="27" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE1)"/>
+
+  <!-- 实心白气泡：两个点抠空（typing indicator） -->
+  <g mask="url(#cutE1)">
+    <rect x="108" y="128" width="296" height="216" rx="64" fill="#fff"/>
+    <path d="M162 332 L124 392 L236 338 Z" fill="#fff"/>
+  </g>
+
+  <!-- 第三个点 = 琥珀小钟（定时） -->
+  <circle cx="332" cy="236" r="27" fill="#fbbf24"/>
+  <line x1="332" y1="236" x2="321" y2="226" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+  <line x1="332" y1="236" x2="343" y2="228" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+</svg>
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101827"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE2)"/>
+
+  <!-- 七段数码管：9:00（琥珀辉光） -->
+  <!-- 9 = A B C D F G ｜ 0 = A B C D E F -->
+  <g fill="#fbbf24" filter="url(#glow)" opacity="0.85">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+  <g fill="#fde68a">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+</svg>
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#059669"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <mask id="cutE3">
+      <rect x="0" y="0" width="32" height="32" fill="#fff"/>
+      <line x1="256" y1="258" x2="206" y2="258" stroke="#000" stroke-width="26" stroke-linecap="round"/>
+      <line x1="256" y1="258" x2="256" y2="206" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="256" cy="258" r="12" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE3)"/>
+
+  <!-- 日历夹环 -->
+  <rect x="191" y="86" width="18" height="52" rx="9" fill="#fff"/>
+  <rect x="303" y="86" width="18" height="52" rx="9" fill="#fff"/>
+
+  <!-- 日历卡（指针负空间抠出） -->
+  <g mask="url(#cutE3)">
+    <rect x="116" y="140" width="280" height="230" rx="52" fill="#fff"/>
+  </g>
+
+  <!-- 琥珀提醒点 -->
+  <circle cx="368" cy="158" r="30" fill="#fbbf24"/>
+</svg>
+<div class="light">
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <mask id="cutE1">
+      <rect x="0" y="0" width="32" height="32" fill="#fff"/>
+      <circle cx="180" cy="236" r="27" fill="#000"/>
+      <circle cx="256" cy="236" r="27" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE1)"/>
+
+  <!-- 实心白气泡：两个点抠空（typing indicator） -->
+  <g mask="url(#cutE1)">
+    <rect x="108" y="128" width="296" height="216" rx="64" fill="#fff"/>
+    <path d="M162 332 L124 392 L236 338 Z" fill="#fff"/>
+  </g>
+
+  <!-- 第三个点 = 琥珀小钟（定时） -->
+  <circle cx="332" cy="236" r="27" fill="#fbbf24"/>
+  <line x1="332" y1="236" x2="321" y2="226" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+  <line x1="332" y1="236" x2="343" y2="228" stroke="#0b1220" stroke-width="5" stroke-linecap="round"/>
+</svg>
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101827"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE2)"/>
+
+  <!-- 七段数码管：9:00（琥珀辉光） -->
+  <!-- 9 = A B C D F G ｜ 0 = A B C D E F -->
+  <g fill="#fbbf24" filter="url(#glow)" opacity="0.85">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+  <g fill="#fde68a">
+    <rect x="94"  y="186" width="44" height="18" rx="9"/><rect x="144" y="204" width="18" height="47" rx="9"/><rect x="144" y="261" width="18" height="47" rx="9"/><rect x="94"  y="308" width="44" height="18" rx="9"/><rect x="76"  y="204" width="18" height="47" rx="9"/><rect x="94"  y="247" width="44" height="18" rx="9"/>
+    <rect x="247" y="226" width="18" height="18" rx="6"/><rect x="247" y="268" width="18" height="18" rx="6"/>
+    <rect x="314" y="186" width="44" height="18" rx="9"/><rect x="364" y="204" width="18" height="47" rx="9"/><rect x="364" y="261" width="18" height="47" rx="9"/><rect x="314" y="308" width="44" height="18" rx="9"/><rect x="296" y="204" width="18" height="47" rx="9"/>
+    <rect x="414" y="186" width="44" height="18" rx="9"/><rect x="464" y="204" width="18" height="47" rx="9"/><rect x="464" y="261" width="18" height="47" rx="9"/><rect x="414" y="308" width="44" height="18" rx="9"/><rect x="396" y="204" width="18" height="47" rx="9"/>
+  </g>
+</svg>
+<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#059669"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <mask id="cutE3">
+      <rect x="0" y="0" width="32" height="32" fill="#fff"/>
+      <line x1="256" y1="258" x2="206" y2="258" stroke="#000" stroke-width="26" stroke-linecap="round"/>
+      <line x1="256" y1="258" x2="256" y2="206" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="256" cy="258" r="12" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE3)"/>
+
+  <!-- 日历夹环 -->
+  <rect x="191" y="86" width="18" height="52" rx="9" fill="#fff"/>
+  <rect x="303" y="86" width="18" height="52" rx="9" fill="#fff"/>
+
+  <!-- 日历卡（指针负空间抠出） -->
+  <g mask="url(#cutE3)">
+    <rect x="116" y="140" width="280" height="230" rx="52" fill="#fff"/>
+  </g>
+
+  <!-- 琥珀提醒点 -->
+  <circle cx="368" cy="158" r="30" fill="#fbbf24"/>
+</svg>
+</div><em>32px 浅：</em></div></body></html>
