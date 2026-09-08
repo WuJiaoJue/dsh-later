@@ -61,13 +61,6 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 > **`/schedule` is not "delayed send"**: pressing Enter on `/schedule …` sends it *immediately* as a user message; only the **newly generated reminder** is deferred. If you want "say this later as me", use **`/later`**.
 
-```
-┌─ Now ─────────────┐   ┌─ Reminder (/schedule, schedule panel) ┐   ┌─ Delayed send (/later) ──┐
-│ Enter to send     │   │ Injected notice when due              │   │ Re-sent as "me" when due │
-│ User bubble       │   │ Never impersonates you                │   │ User bubble              │
-└───────────────────┘   └───────────────────────────────────────┘   └──────────────────────────┘
-```
-
 ---
 
 ## Quick start
