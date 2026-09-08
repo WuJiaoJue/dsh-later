@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgE3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#059669"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <mask id="cutE3">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <line x1="256" y1="258" x2="206" y2="258" stroke="#000" stroke-width="26" stroke-linecap="round"/>
+      <line x1="256" y1="258" x2="256" y2="206" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="256" cy="258" r="12" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgE3)"/>
+
+  <!-- 日历夹环 -->
+  <rect x="191" y="86" width="18" height="52" rx="9" fill="#fff"/>
+  <rect x="303" y="86" width="18" height="52" rx="9" fill="#fff"/>
+
+  <!-- 日历卡（指针负空间抠出） -->
+  <g mask="url(#cutE3)">
+    <rect x="116" y="140" width="280" height="230" rx="52" fill="#fff"/>
+  </g>
+
+  <!-- 琥珀提醒点 -->
+  <circle cx="368" cy="158" r="30" fill="#fbbf24"/>
+</svg>

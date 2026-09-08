@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgD1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <mask id="cutD1">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <line x1="256" y1="242" x2="224" y2="187" stroke="#000" stroke-width="26" stroke-linecap="round"/>
+      <line x1="256" y1="242" x2="299" y2="167" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <circle cx="256" cy="242" r="12" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bgD1)"/>
+
+  <!-- 实心白气泡（含尾巴），指针以负空间抠出 -->
+  <g mask="url(#cutD1)">
+    <rect x="116" y="135" width="280" height="210" rx="62" fill="#fff"/>
+    <path d="M170 338 L132 396 L242 344 Z" fill="#fff"/>
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ssLogoBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <linearGradient id="clockGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#ssLogoBg)"/>
+
+  <!-- 像素时钟：基于 session-presence 的 CLOCK_SVG 设计 -->
+  <!-- 外圈 ring（8个方块） - 带发光效果 -->
+  <g fill="url(#clockGradient)" filter="url(#glow)" opacity="0.95">
+    <!-- 左上 -->
+    <rect x="140" y="140" width="48" height="48" rx="4"/>
+    <!-- 上中 -->
+    <rect x="232" y="140" width="48" height="48" rx="4"/>
+    <!-- 右上 -->
+    <rect x="324" y="140" width="48" height="48" rx="4"/>
+    <!-- 右中 -->
+    <rect x="324" y="232" width="48" height="48" rx="4"/>
+    <!-- 右下 -->
+    <rect x="324" y="324" width="48" height="48" rx="4"/>
+    <!-- 下中 -->
+    <rect x="232" y="324" width="48" height="48" rx="4"/>
+    <!-- 左下 -->
+    <rect x="140" y="324" width="48" height="48" rx="4"/>
+    <!-- 左中 -->
+    <rect x="140" y="232" width="48" height="48" rx="4"/>
+  </g>
+
+  <!-- 指针 hand（2个方块） - 更亮的颜色 -->
+  <g fill="#c4b5fd" filter="url(#glow)">
+    <!-- 竖指针（12点方向） -->
+    <rect x="232" y="188" width="48" height="48" rx="4"/>
+    <!-- 横指针（3点方向） -->
+    <rect x="280" y="232" width="48" height="48" rx="4"/>
+  </g>
+
+  <!-- 中心点 -->
+  <circle cx="256" cy="256" r="12" fill="#fbbf24"/>
+</svg>
