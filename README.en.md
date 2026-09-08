@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="docs/logo-pixel-clock-refined.svg?v=3" width="128" alt="dsh-session-scheduler logo"/>
+<img src="docs/logo-pixel-clock-refined.svg?v=4" width="64" alt="⏰"/>
+<img src="docs/logo-pixel-clock-refined.svg?v=4" width="64" alt="⏰"/>
+<img src="docs/logo-pixel-clock-refined.svg?v=4" width="64" alt="⏰"/>
+<img src="docs/logo-pixel-clock-refined.svg?v=4" width="64" alt="⏰"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
