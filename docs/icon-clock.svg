@@ -1,0 +1,6 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 第三个点 = 琥珀小钟（定时） -->
+  <circle cx="256" cy="256" r="27" fill="#fbbf24"/>
+  <line x1="256" y1="256" x2="245" y2="246" stroke="#1e293b" stroke-width="5" stroke-linecap="round"/>
+  <line x1="256" y1="256" x2="267" y2="248" stroke="#1e293b" stroke-width="5" stroke-linecap="round"/>
+</svg>
