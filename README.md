@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png?v=1" width="128" alt="dsh-session-scheduler logo"/>
+<img src="docs/logo.png?v=2" width="128" alt="dsh-session-scheduler logo"/>
 
 # dsh-session-scheduler — 会话内定时消息插件
 
@@ -18,10 +18,11 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 - **用户工具**（P0）：`user_schedule_create` / `user_schedule_list` / `user_schedule_delete` / `user_schedule_edit`（改内容保留原时刻），复用 dsh-schedule 领域函数，写入与其**完全兼容**的会话事件日志。
 - **GUI 面板**：输入框右侧 ⏰ 按钮（order 50）→ 智能时段 / 自定义时间 / 发送预览 / 已设定任务列表 / 倒计时芯片（含取消全部）。
-- **设置页配置**：DSH 设置 → 插件 → Session Scheduler 提供 `maxSchedules` + 智能时段 5 个 HH:mm 字段，全部 **live 生效**（无需重启），字段优先级 用户设置 > cordis yml > schema 默认。
+- **设置页配置**：DSH 设置 → 插件 → Session Scheduler 提供 输入按钮显隐开关 + `maxSchedules` + 智能时段 5 个 HH:mm 字段，全部 **live 生效**（无需重启），字段优先级 用户设置 > cordis yml > schema 默认。
 - **输入框上方 dock**：待发送提醒条（单条直出 / 多条折叠可展开），每条**可单独取消、可点击 ✎ 行内改内容**。
 - **`/later` 延迟发送**：到点以「你」的身份代发内容（产品取舍见心智模型）。
 - **提醒到达 toast**：到期注入时右上角弹轻提示（投影差异检测，5s 自消）。
+- **侧栏定时状态 badge**：有活动定时任务的会话，在侧栏行内显示紫色时钟图标（与「进行中」orb 并存；≤5 分钟转琥珀脉冲、到期转红）。数据取自 `session.list` 行级投影（全会话覆盖，含冷会话缓存），零宿主改动；行映射走 React fiber 探测，规范见 `docs/ui/09-session-presence.md`（含设计稿 mockup）。
 - **关网页也能触发**：任务持久化在 session JSONL（事件溯源），到期由 dsh-schedule 引擎 dispatch + `followup()` 注入用户角色消息，不经浏览器。
 - **注入防护**：提醒内容作为「非信任提醒内容」经 `renderReminderFraming` JSON 转义转达，不当作新的用户指令。`/later` 的代发形态（`delivery:'user'`）只能由人类显式输入的命令经**可信通道参数**声明——工具与 GUI 载荷里的同名字段一律无效（安全边界有回归测试锁定）。
 - **积压合并派发**：关网页期间积压的多条到期一次性提醒合并为一条批次注入（framing 形状与 dsh-schedule 固定间隔批次一致），不再逐条刷屏；`/later` 与 `/schedule` 积压按投递形态分组、按时间先后分轮派发。
@@ -77,6 +78,27 @@ DSH 现有定时能力各缺一角：`dsh-schedule` 只暴露给模型、用户�
 
 ---
 
+## 长文本提醒
+
+提醒内容（`prompt`）默认最多 **1000 字符**——这是注入防护的保守下限，避免定时文本无限膨胀后被未来的 framing 解析器/注入信任边界吃掉风险。需要更长内容时，可在 DSH 设置 → 插件 → Session Scheduler 中开启：
+
+- **关闭（默认）**：`allowLongPrompts=false`。无论 `maxPromptChars` 填什么值，都按 1000 字符校验；GUI 面板、客户端预校验、`user_schedule_create` 工具、`/schedule` / `/later` 命令、编辑命令均一致。
+- **开启**：`allowLongPrompts=true` + 自定义 `maxPromptChars`（≥1 整数）。保存即时生效（无需重启会话），模型可见的 `user_schedule_create` 工具 description、错误消息里的字符数都会同步更新，避免描述与实现脱节。
+
+### 适合开长的例子
+
+- 一段较长的代码片段、会议纪要、长引文
+- 跨设备推送到手机提醒自己的一段日记/待办清单
+
+### 不建议开长的场景
+
+- 提醒文本里包含可被模型视为「指令」的内容（系统提醒文本经 `renderReminderFraming` JSON 转义按 non-trust 处理，但**更长内容 = 更大的注入面**）
+- 多端公共设备共享同一个 profile（任何人都能临时调大）
+
+实际生效值与工具错误消息里的字符数完全一致：保存后模型即可看到新上限（description 动态生成）。GUI 面板在保存后立刻刷新预校验阈值，无需刷新会话。
+
+---
+
 ## 安装
 
 ```sh
@@ -104,9 +126,12 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 默认开箱即用，两个相互正交的面：
 
-**设置页（推荐，UI 可改）**：DSH 设置 → 插件 → Session Scheduler。提供 6 个字段：
+**设置页（推荐，UI 可改）**：DSH 设置 → 插件 → Session Scheduler。提供 9 个字段：
 
+- `showButton` — 是否显示输入框右侧的定时按钮（默认 `true`，下拉「显示/隐藏」）。关闭只影响 GUI 显隐：已创建的提醒仍照常触发，dock 列表也继续显示。
 - `maxSchedules` — 单 session 用户任务上限（≥1 整数）。
+- `allowLongPrompts` — 是否解除提示字符的默认下限（默认 `false`）。关闭时无论 `maxPromptChars` 配什么值都按 1000 字符校验——保持默认安全的注入防护姿态。
+- `maxPromptChars` — 提示字符上限（≥1 整数），仅在 `allowLongPrompts=true` 时生效。默认 1000。
 - `workStart` / `workEnd` / `lunchStart` / `lunchEnd` / `eveningEnd` — 智能时段 5 个 HH:mm 字段，**实时生效**（保存后「工作时间」芯片与 `nextSmartAt` 立即按新值重算，无需刷新会话）。
 
 每个字段独立显示覆盖状态（用户层写入即「已覆盖」，可单独 reset 回 yml 起始值）。非法输入在卡片内校验并阻断保存；宿主/客户端读取前会再次清洗（`sanitizeSmartWindowConfig` 逐字段回落默认），保证下游绝不因脏输入抛错。
@@ -199,8 +224,13 @@ dsh-schedule 的 runtime 只在其自身工具变更 / agent 转 idle 时重驱�
 
 ## 验证状态
 
-- **单元/集成测试**：70 个全绿（host + client 双端构建通过；`npm run typecheck` 因 dev 环境双副本 `@deepseek-ai/dsh-session` 有预存依赖类型噪音，构建不受影响——本轮改动后噪音错误较基线净减 5 条，无新增）
+- **单元/集成测试**：90 个全绿（host + client 双端构建通过；`npm run typecheck` 因 dev 环境双副本 `@deepseek-ai/dsh-session` 有预存依赖类型噪音，构建不受影响——本轮改动后噪音错误较基线净减 5 条，无新增）
 - **独立实例线上 E2E（Playwright 无头真点 UI）**：按钮渲染→开面板→自定义时间→确认→芯片出现→任务列表可见→**到期真触发（≈计划 75s，实测 72s）→对话出现 `user/message`（source=plugin:session-scheduler）**；磁盘日志逐条确认 create→owned→dispatch→followup 全持久化、无重复触发。
+- **内核代次兼容（2026-09-07 实测）**：`0.1.1-rc.2` 与 `0.1.2-rc.1` 两代均通过 host 入口链接（运行时符号 17/17 存在）、headless 真实启动（停在 `MISSING_CREDENTIAL`，在插件加载之后）与 web 真实启动（`lib/client.js` HTTP 200）。跨代做法有三处：
+  1. **peer 枚举完整覆盖**：除了 `dsh-schedule / dsh-session / dsh-session-projection`，把宿主直接 import 的 `@deepseek-ai/{cordis,dsh-agent,dsh-commands,dsh-llm,dsh-settings,dsh-tools,schemastery}` 全部列入 peer + dev——`0.1.1-rc.2` 经 `dsh-schedule` 传递提升到顶层 `node_modules/@deepseek-ai/` 时这些包是可达的；`0.1.2-rc.1` 的 hoisting 策略变化把它们留在 `.pnpm/`，**未声明 peer 的会运行时报 `ERR_MODULE_NOT_FOUND`**（已实测 `lib/runtime.js` import `@deepseek-ai/dsh-llm` 在 0.1.2 直接崩）。
+  2. **设置命名空间**写作 `'dsh-session-scheduler' as SettingsNamespace`（`settingsNamespace()` helper 在 `0.1.2` 已删除，运行时导入会让整个模块链接失败）。
+  3. **设置卡片所需的 `SettingsScope`** 在 `src/client/components/SchedulerSettingsCard.tsx` 内本地声明，不从 `@deepseek-ai/dsh-client-runtime/client` 取类型——该包是 `0.1.1` 内核特有，`0.1.2` 已拆走，且同名 `SettingsScope` 在 host（`dsh-settings`）与 client 两侧成员并不相同。peer 为逐代枚举 `^0.1.1-rc.2 || ^0.1.2-rc.1`（node-semver 不把预发布版算进任何范围，除非比较符带同一 `[major.minor.patch]` 元组，故无跨代区间写法）：**上游每发布新 rc 代次就要补一个枚举项**。
+- **Session API 跨代（user-tools `foldUserState`）**：`0.1.1` 暴露 `session.events` + `session.header.seedLength`；`0.1.2` 改名为 `session.ownEvents()` + `session.inheritedEventCount`（`SessionLogOffset`）。代码走鸭子类型双轨探测，不引入 `any`，cache key 维度同步替换为 `inheritedEventCount`，foldScheduleEvents 第二参数透传 runtime 值。
 
 ## 目录
 

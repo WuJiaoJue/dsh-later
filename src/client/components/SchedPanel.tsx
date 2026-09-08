@@ -35,6 +35,8 @@ export interface SchedPanelProps {
   bottom: number;
   /** 智能时段配置（设置页实时值，已清洗；缺省用内置默认）。 */
   smartWindow?: SmartWindowConfig;
+  /** 提示字符上限（设置页实时值；缺省回退 1000）。 */
+  promptLimits?: { readonly maxChars: number; readonly allowLong: boolean };
 }
 
 /** 一个快捷选项：相对时长（after_seconds）或固定时刻（at）。 */
@@ -68,6 +70,7 @@ export function SchedPanel({
   onDelete,
   bottom,
   smartWindow = DEFAULT_SMART_WINDOW,
+  promptLimits,
 }: SchedPanelProps): JSX.Element {
   const now = useNow(1000);
   const [selected, setSelected] = useState<string>('after-600');
@@ -164,9 +167,10 @@ export function SchedPanel({
       setError(t.errPromptEmpty);
       return;
     }
-    // 与宿主 MAX_PROMPT_CHARS=1000 对齐的本地预校验（P1-7）：
+    // 与宿主 resolvePromptLimits 对齐的本地预校验（P1-7）：
     // 宿主错误文案不随 locale 变化，能在客户端拦下的就不发往宿主。
-    if (text.length > 1000) {
+    const maxChars = promptLimits?.maxChars ?? 1000;
+    if (text.length > maxChars) {
       setError(t.errPromptTooLong);
       return;
     }

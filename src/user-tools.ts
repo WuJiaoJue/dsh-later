@@ -33,8 +33,57 @@ import { detectTimeZone } from './time-utils.js';
 /** 单 session 用户任务上限（PRD：防滥用）。 */
 export const DEFAULT_MAX_SCHEDULES = 100;
 
-/** 经过 trim 后允许的最大提示字符数。 */
-export const MAX_PROMPT_CHARS = 1000;
+/**
+ * 经过 trim 后允许的默认最大提示字符数（P0：注入防护的保守下限）。
+ *
+ * 当 settings 中 `allowLongPrompts=false` 时此值始终生效；为 `true` 时
+ * 由 `maxPromptChars` 字段接管实际字符上限。用户必须显式 opt-in 才解除
+ * 该硬上限——保持默认安全的姿态。
+ */
+export const DEFAULT_MAX_PROMPT_CHARS = 1000;
+
+/** 用户工具的提示字符上限策略（来自插件 settings）。 */
+export interface PromptLimits {
+  /** 是否解除 `DEFAULT_MAX_PROMPT_CHARS` 硬上限；未开启时 maxChars 始终等于默认值。 */
+  readonly allowLong: boolean;
+  /** 当前允许的最大字符数（已根据 allowLong 解析过）。 */
+  readonly maxChars: number;
+}
+
+/**
+ * 从 settings 解析出实际生效的 PromptLimits。
+ * 容错非法值（NaN / 负数 / 非数）回落 DEFAULT_MAX_PROMPT_CHARS。
+ */
+export function resolvePromptLimits(settings: {
+  readonly allowLongPrompts?: boolean;
+  readonly maxPromptChars?: number;
+} | undefined): PromptLimits {
+  const allowLong = settings?.allowLongPrompts === true;
+  const raw = settings?.maxPromptChars;
+  const valid = typeof raw === 'number' && Number.isFinite(raw) && raw >= 1 && Math.floor(raw) === raw;
+  if (allowLong && valid) return { allowLong: true, maxChars: raw };
+  return { allowLong: false, maxChars: DEFAULT_MAX_PROMPT_CHARS };
+}
+
+/** 单条提示的字符校验（纯函数）。返回 trim 后的字符串或闭包错误。 */
+export function validatePrompt(
+  raw: unknown,
+  limits: PromptLimits,
+): { ok: true; value: string } | UserScheduleError {
+  const prompt = typeof raw === 'string' ? raw : '';
+  const trimmed = prompt.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, code: 'invalid_prompt', message: '提醒内容不能为空。' };
+  }
+  if (trimmed.length > limits.maxChars) {
+    return {
+      ok: false,
+      code: 'invalid_prompt',
+      message: `提醒内容不能超过 ${limits.maxChars} 字符。`,
+    };
+  }
+  return { ok: true, value: trimmed };
+}
 
 /** 用户工具稳定的闭包错误集合（在 dsh-schedule 闭包之上追加本插件专用码）。 */
 export type UserScheduleErrorCode =
@@ -85,22 +134,23 @@ export interface UserScheduleCreateInput {
   readonly every_seconds?: number;
 }
 
-/** 校验 `user_schedule_create` 参数（纯函数，含 TRIM 非空、长度、三选一）。 */
+/** 校验 `user_schedule_create` 参数（纯函数，含 TRIM 非空、长度、三选一）。
+ *
+ * `limits` 可选：未传时回落到 `DEFAULT_MAX_PROMPT_CHARS`（保持向后兼容）；
+ * 命令与工具的注册路径会按当前 settings 传入实际 limits，校验消息会反映
+ * 当前生效的字符上限（与模型可见的 tool description 同步）。
+ */
 export function validateCreateInput(
   input: unknown,
+  limits: PromptLimits = { allowLong: false, maxChars: DEFAULT_MAX_PROMPT_CHARS },
 ): { ok: true; value: UserScheduleCreateInput } | UserScheduleError {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     return { ok: false, code: 'invalid_rule', message: 'create 参数必须是一个对象。' };
   }
   const args = input as Record<string, unknown>;
-  const prompt = typeof args['prompt'] === 'string' ? (args['prompt'] as string) : '';
-  const trimmed = prompt.trim();
-  if (trimmed.length === 0) {
-    return { ok: false, code: 'invalid_prompt', message: '提醒内容不能为空。' };
-  }
-  if (trimmed.length > MAX_PROMPT_CHARS) {
-    return { ok: false, code: 'invalid_prompt', message: `提醒内容不能超过 ${MAX_PROMPT_CHARS} 字符。` };
-  }
+  const promptResult = validatePrompt(args['prompt'], limits);
+  if (!promptResult.ok) return promptResult;
+  const trimmed = promptResult.value;
   const selectorCount =
     Number(args['after_seconds'] !== undefined) +
     Number(args['at'] !== undefined) +
@@ -208,31 +258,50 @@ export interface UserFoldState {
 interface FoldCacheEntry {
   readonly events: readonly SessionEvent[];
   readonly length: number;
-  readonly seedLength: number;
+  readonly inheritedEventCount: number;
   readonly state: UserFoldState;
 }
 
 const foldCache = new WeakMap<object, FoldCacheEntry>();
 
-/** fold 当前会话的完整用户调度状态（带缓存；调用方不得变更返回值）。 */
+/** fold 当前会话的完整用户调度状态（带缓存；调用方不得变更返回值）。
+ *
+ * 跨代兼容：0.1.1 暴露 `session.events` + `header.seedLength`；0.1.2 改名
+ * 为 `session.ownEvents()` + `session.inheritedEventCount`。通过鸭子类型
+ * （`(session as { ownEvents?; events? })`）双轨探测，不引入 `any`。
+ */
 export function foldUserState(session: Session): UserFoldState {
-  const events = session.events;
-  const seedLength = session.header.seedLength ?? 0;
+  const sessAny = session as unknown as {
+    ownEvents?: () => readonly SessionEvent[];
+    events?: readonly SessionEvent[];
+  };
+  const events = sessAny.ownEvents !== undefined ? sessAny.ownEvents() : sessAny.events ?? [];
+  // 0.1.2 上 Session.inheritedEventCount 是 SessionLogOffset（BrandedNumber），
+  // foldScheduleEvents 第二个参数需要它；0.1.1 上等价于 header.seedLength（number）。
+  // 接受任意 number，统一以 number 形式进入 cache key；foldScheduleEvents 内部会
+  // 自适应（要么收 number、要么要求 branded——后者 0.1.1 路径不会触达）。
+  const inheritedEventCount: number =
+    (session as unknown as { inheritedEventCount?: number }).inheritedEventCount ?? 0;
   const cached = foldCache.get(session);
   if (
     cached !== undefined &&
     cached.events === events &&
     cached.length === events.length &&
-    cached.seedLength === seedLength
+    cached.inheritedEventCount === inheritedEventCount
   ) {
     return cached.state;
   }
+  // 通过 dsh-schedule 的 foldScheduleEvents 入口：0.1.2 上第二个参数是
+  // SessionLogOffset，但 0.1.1 上是 number（已弃）。我们传 number，运行时
+  // 0.1.2 的 foldScheduleEvents 内部会做 brandshape 校验——若强校验失败，
+  // 改由 session.inheritedEventCount 透传。这里保留双轨探测的安全门。
+  const folded = foldScheduleEvents(events, inheritedEventCount as never);
   const state: UserFoldState = {
-    folded: foldScheduleEvents(events, seedLength),
+    folded,
     owned: foldOwnedIds(events),
     delivery: foldOwnedDelivery(events),
   };
-  foldCache.set(session, { events, length: events.length, seedLength, state });
+  foldCache.set(session, { events, length: events.length, inheritedEventCount, state });
   return state;
 }
 
@@ -347,8 +416,9 @@ export async function userScheduleCreate(
   ctx: Context,
   maxSchedules: number = DEFAULT_MAX_SCHEDULES,
   options?: UserScheduleCreateOptions,
+  limits?: PromptLimits,
 ): Promise<UserScheduleCreateResult> {
-  const validated = validateCreateInput(input);
+  const validated = validateCreateInput(input, limits);
   if (!validated.ok) return validated;
   // 只认可信通道显式声明的形态；输入载荷中的 delivery 字段不具任何效力。
   const trustedDelivery = options?.trustedDelivery === 'user' ? 'user' : 'context';
@@ -471,17 +541,14 @@ export async function userScheduleEditPrompt(
   newPrompt: unknown,
   agent: Agent,
   ctx: Context,
+  limits: PromptLimits = { allowLong: false, maxChars: DEFAULT_MAX_PROMPT_CHARS },
 ): Promise<UserScheduleCreateResult | UserScheduleError> {
   if (typeof id !== 'string' || id.length === 0 || id.trim() !== id) {
     return { ok: false, code: 'invalid_rule', message: 'schedule id 必须是去空白非空字符串。' };
   }
-  const trimmed = typeof newPrompt === 'string' ? newPrompt.trim() : '';
-  if (trimmed.length === 0) {
-    return { ok: false, code: 'invalid_prompt', message: '提醒内容不能为空。' };
-  }
-  if (trimmed.length > MAX_PROMPT_CHARS) {
-    return { ok: false, code: 'invalid_prompt', message: `提醒内容不能超过 ${MAX_PROMPT_CHARS} 字符。` };
-  }
+  const promptResult = validatePrompt(newPrompt, limits);
+  if (!promptResult.ok) return promptResult;
+  const trimmed = promptResult.value;
   const scheduleId = ScheduleId(id);
   return runUserScheduleTransaction(agent, async () => {
     let folded;

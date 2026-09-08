@@ -96,16 +96,21 @@ class FakeSession {
   }
 }
 
-/** 假 Agent：message 收集 + 简易 runMaintenance/whenIdle。 */
+/** 假 Agent：message 收集 + 简易 runMaintenance/whenIdle/steer。 */
 class FakeAgent {
   constructor(session) {
     this.id = 'agent-runtime';
     this.session = session;
     this.messages = [];
     this.busy = false;
+    this.steered = [];
   }
   followup(message) {
     this.messages.push(message);
+  }
+  steer(message) {
+    // 与 dsh-agent-loop 一致：busy 时也可投（排在下一个 step boundary），不 throw。
+    this.steered.push(message);
   }
   async whenIdle() {}
   async runMaintenance(job) {
@@ -228,4 +233,74 @@ test('runtime：P1-5 积压多条一次性合并为一条批次注入', async ()
   assert.equal(dispatch.length, 3);
   const folded = foldScheduleEvents(session.events, 0);
   assert.equal(folded.active.length, 0);
+});
+
+/** 构造含一条已到点 owned 一次性提醒的 session。 */
+function sessionWithDueAt(id, scheduledAtIso) {
+  return new FakeSession([
+    {
+      type: 'schedule/change',
+      seq: 0,
+      time: 0,
+      data: { version: 1, operation: 'create', schedule: S_AT(id, scheduledAtIso) },
+    },
+    {
+      type: 'session-scheduler/user-schedule',
+      seq: 1,
+      time: 0,
+      data: { version: 1, operation: 'add', id },
+    },
+  ]);
+}
+
+test('steer：busy agent（in-flight 插话主场景）插话成功且写 dispatch', async () => {
+  const due = new Date(Date.now() - 5000).toISOString(); // 已到点
+  const session = sessionWithDueAt('s1', due);
+  const agent = new FakeAgent(session);
+  // 模拟 auto-driver 正忙：runMaintenance 会 throw，旧实现在此必然 internal_error
+  agent.busy = true;
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  const result = await runtime.steerById('s1');
+
+  assert.deepEqual(result, { ok: true, id: 's1', steered: true });
+  // 消息以「立即消费」形态投给 agent（steer 收集，不是 followup）
+  assert.equal(agent.steered.length, 1);
+  assert.equal(agent.messages.length, 0);
+  assert.match(agent.steered[0].content[0].text, /\[SCHEDULE REMINDER\]/);
+  // dispatch 已落日志 → fold 后不再 active（无双触发）
+  const dispatch = session.events.filter((e) => e.type === 'schedule/change' && e.data.operation === 'dispatch');
+  assert.equal(dispatch.length, 1);
+  const folded = foldScheduleEvents(session.events, 0);
+  assert.equal(folded.active.length, 0);
+  await runtime.dispose();
+});
+
+test('steer：未到点也允许插话（QueueDock「插话发送」语义），成功即出列', async () => {
+  const future = new Date(Date.now() + 60000).toISOString();
+  const session = sessionWithDueAt('s1', future);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  const result = await runtime.steerById('s1');
+
+  assert.deepEqual(result, { ok: true, id: 's1', steered: true });
+  assert.equal(agent.steered.length, 1);
+  assert.equal(agent.messages.length, 0);
+  // dispatch 已落日志 → 到点后不会再 fire 一次（无双触发）
+  const dispatch = session.events.filter((e) => e.type === 'schedule/change' && e.data.operation === 'dispatch');
+  assert.equal(dispatch.length, 1);
+  const folded = foldScheduleEvents(session.events, 0);
+  assert.equal(folded.active.length, 0);
+  await runtime.dispose();
+});
+
+test('steer：不存在的 id 拒绝', async () => {
+  const session = sessionWithDueAt('s1', new Date(Date.now() - 5000).toISOString());
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  const result = await runtime.steerById('ghost');
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'schedule_not_found');
+  assert.equal(agent.steered.length, 0);
+  await runtime.dispose();
 });

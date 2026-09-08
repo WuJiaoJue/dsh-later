@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png?v=1" width="128" alt="dsh-session-scheduler logo"/>
+<img src="docs/logo.png?v=2" width="128" alt="dsh-session-scheduler logo"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
@@ -189,6 +189,7 @@ Between **rc.1 → rc.2**, `@deepseek-ai/dsh-session-projection` changed the reg
 
 - **Unit/integration tests**: all 60 green (host + client builds pass; `npm run typecheck` reports pre-existing dependency type noise from duplicate `@deepseek-ai/dsh-session` copies in the dev environment — the build is unaffected, see "dependency alignment" above)
 - **Live E2E on an isolated instance (Playwright headless driving the real UI)**: button renders → open panel → custom time → confirm → chip appears → task list visible → **actually fires when due (≈75 s planned, 72 s measured) → conversation shows `user/message` (source=plugin:session-scheduler)**; the on-disk log was checked entry by entry: create→owned→dispatch→followup all persisted, no duplicate firing.
+- **Kernel generation compatibility (measured 2026-09-07)**: both `0.1.1-rc.2` and `0.1.2-rc.1` pass host entry linking (17/17 runtime symbols present), a real headless boot (stops at `MISSING_CREDENTIAL`, which is after plugins load) and a real web boot (`lib/client.js` HTTP 200). Two choices make one codebase span both: the settings namespace is written as `'dsh-session-scheduler' as SettingsNamespace` (the `settingsNamespace()` helper was removed in `0.1.2`, where importing it at runtime makes the whole module fail to link), and the `SettingsScope` the settings card needs is declared locally in `src/client/components/SchedulerSettingsCard.tsx` rather than imported from `@deepseek-ai/dsh-client-runtime/client` — that package is `0.1.1`-only and was split out in `0.1.2`, and the identically named `SettingsScope` on the host side (`dsh-settings`) has different members from the client side. Peer deps are an explicit generation list `^0.1.1-rc.2 || ^0.1.2-rc.1` (node-semver excludes prereleases from every range unless a comparator carries the same `[major.minor.patch]` tuple, so no range form spans generations): **add another entry whenever upstream ships a new rc generation**.
 
 ## Layout
 
