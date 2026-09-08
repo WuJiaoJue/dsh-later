@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="ssLogoCut">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <circle cx="180" cy="236" r="27" fill="#000"/>
+      <circle cx="256" cy="236" r="27" fill="#000"/>
+    </mask>
+  </defs>
+
+  <!-- 实心白气泡：两个点抠空（typing indicator） -->
+  <g mask="url(#ssLogoCut)">
+    <rect x="108" y="128" width="296" height="216" rx="64" fill="#fff"/>
+    <path d="M162 332 L124 392 L236 338 Z" fill="#fff"/>
+  </g>
+</svg>
