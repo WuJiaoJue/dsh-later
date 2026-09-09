@@ -39,7 +39,7 @@ DSH 现有定时能力各缺一角：内置定时只暴露给模型、用户无�
 
 <img src="docs/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
 
-**到期真实触发** —— 到点后对话里出现「定时提醒到点」消息（关网页也照常触发）：
+**到期真实触发** —— 到点后对话里出现「⏰ 定时提醒」消息（关网页也照常触发）：
 
 <img src="docs/screenshot-fired.png" width="560" alt="到期提醒消息"/>
 
