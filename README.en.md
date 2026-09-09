@@ -39,7 +39,7 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 <img src="docs/screenshot-dock.png" width="700" alt="Pending dock and input box"/>
 
-**A real due-time firing** — when the time comes, a `Reminder due` message appears in the conversation (fires even with the page closed):
+**A real due-time firing** — when the time comes, a `⏰ Scheduled reminder` message appears in the conversation (fires even with the page closed):
 
 <img src="docs/screenshot-fired.png" width="560" alt="Due-time reminder message"/>
 
