@@ -191,6 +191,27 @@ async function clearInput(page, tb) {
   log('fired-full saved');
   await page.locator('[aria-label="删除提醒"]').first().click().catch(() => {});
   await clearInput(page, tb);
+  await waitIdle(page); await sleep(1000);
+
+  // 8. /later 命令演示分镜
+  const FR_LATER = path.join(OUT, 'frames-later');
+  fs.mkdirSync(FR_LATER, { recursive: true });
+  await page.addStyleTag({ content: '* { caret-color: transparent !important; }' });
+  await clearInput(page, tb); await sleep(300);
+  await page.screenshot({ path: path.join(FR_LATER, 'later-00.png') });
+  await tb.click();
+  await tb.type('/later +60m 下午4点提醒我提交周报', { delay: 28 });
+  await sleep(500);
+  await page.screenshot({ path: path.join(FR_LATER, 'later-01.png') });
+  await tb.press('Enter');
+  await sleep(1500);
+  await page.screenshot({ path: path.join(FR_LATER, 'later-02.png') });
+  await sleep(800);
+  await page.screenshot({ path: path.join(FR_LATER, 'later-03.png') });
+  log('later frames done');
+  await page.locator('[aria-label="删除提醒"]').first().click().catch(() => {});
+  await clearInput(page, tb);
+
   console.log('CAPTURE OK →', OUT);
   await browser.close();
 })().catch(e => { console.error('ERR', e); process.exit(1); });
