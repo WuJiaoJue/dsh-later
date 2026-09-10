@@ -3,10 +3,14 @@
  * `user_schedule_delete`。
  *
  * 复用 dsh-schedule 导出的领域函数（fold / allocate / 各 create 函数 /
- * scheduleView），
- * 写入**完全兼容**的 `schedule/change` 事件（不携带 `source` 字段，避免破坏
- * dsh-schedule 严格解码），并额外追加本插件自有的伴生所有权事件
- * `session-scheduler/user-schedule` 来标记用户来源（GUI 据此展示）。
+ * scheduleView），写入**完全兼容**的 `schedule/change` 事件（不携带 `source`
+ * 字段，避免破坏 dsh-schedule 严格解码）。
+ *
+ * 用户来源（所有权 + 投递形态）记录在**插件自己的 sidecar 文件**里
+ * （ownership-store.ts），**不再写入会话日志**——2026-09 根治：伴生事件
+ * `session-scheduler/user-schedule` 曾因宿主持久化静默丢行而留下永久 seq
+ * 缺口，让整份历史被拒读。日志里若仍残留旧的伴生事件（历史日志），fold
+ * 会继续读取（读兼容），但本模块不再产生它们。
  *
  * 所有读改写操作按 agent 串行化（同 dsh-schedule 的 agent-scoped 队列），
  * 保证 id 分配与 fold 不会并发竞争。
@@ -28,6 +32,7 @@ import {
 import type { ScheduleRecord, ScheduleView } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT } from './domain.js';
 import type { UserScheduleOwnedChange, UserScheduleDelivery } from './domain.js';
+import { allOwnership, getOwnership, recordOwnership, removeOwnership } from './ownership-store.js';
 import { detectTimeZone } from './time-utils.js';
 
 /** 单 session 用户任务上限（PRD：防滥用）。 */
@@ -208,7 +213,7 @@ export function isValidIanaZone(value: string): boolean {
   }
 }
 
-/** 从会话日志导出「用户创建过的 schedule id 集合」。 */
+/** 从会话日志导出「用户创建过的 schedule id 集合」（历史遗留读兼容）。 */
 export function foldOwnedIds(events: readonly SessionEvent[]): Set<string> {
   const owned = new Set<string>();
   for (const event of events) {
@@ -296,10 +301,21 @@ export function foldUserState(session: Session): UserFoldState {
   // 0.1.2 的 foldScheduleEvents 内部会做 brandshape 校验——若强校验失败，
   // 改由 session.inheritedEventCount 透传。这里保留双轨探测的安全门。
   const folded = foldScheduleEvents(events, inheritedEventCount as never);
+  // 所有权与投递形态：sidecar 为准（新写入），日志中的历史 OWNED 事件作底
+  // （读兼容，旧日志可能仍有残留行）。
+  const sessionId = session.header?.id;
+  const owned = foldOwnedIds(events);
+  const delivery = new Map(foldOwnedDelivery(events));
+  if (typeof sessionId === 'string' && sessionId.length > 0) {
+    for (const [id, entry] of Object.entries(allOwnership(sessionId))) {
+      owned.add(id);
+      if (!delivery.has(id)) delivery.set(id, entry.delivery);
+    }
+  }
   const state: UserFoldState = {
     folded,
-    owned: foldOwnedIds(events),
-    delivery: foldOwnedDelivery(events),
+    owned,
+    delivery,
   };
   foldCache.set(session, { events, length: events.length, inheritedEventCount, state });
   return state;
@@ -448,22 +464,24 @@ export async function userScheduleCreate(
     } catch (error) {
       return toInputError(error);
     }
+    // 所有权写 sidecar（append 之前：投影 fold 在事件到达时按 sidecar 判定归属）。
+    // flush 失败则回滚，避免 sidecar 与日志漂移。
+    const sessionId = agent.session.header?.id;
+    recordOwnership(sessionId, id, trustedDelivery);
     try {
       agent.session.append('schedule/change', {
         version: 1,
         operation: 'create',
         schedule: record,
       });
-      agent.session.append(OWNED_EVENT, {
-        version: 1,
-        operation: 'add',
-        id,
-        ...(trustedDelivery === 'user' ? { delivery: 'user' as const } : {}),
-      });
     } catch {
+      removeOwnership(sessionId, id);
       return internalError();
     }
-    if (!(await flushSession(ctx, agent.session))) return persistenceError();
+    if (!(await flushSession(ctx, agent.session))) {
+      removeOwnership(sessionId, id);
+      return persistenceError();
+    }
     const view = scheduleView(record, Date.now());
     return {
       ok: true,
@@ -515,22 +533,20 @@ export async function userScheduleDelete(
     if (!folded.active.some((record) => record.id === scheduleId)) {
       return { ok: true, id, deleted: false, code: 'schedule_not_found' };
     }
+    const sessionId = agent.session.header?.id;
     try {
       agent.session.append('schedule/change', {
         version: 1,
         operation: 'delete',
         id: scheduleId,
       });
-      // 若该 id 曾标记为用户所有，同步撤销所有权声明（幂等）。
-      agent.session.append(OWNED_EVENT, {
-        version: 1,
-        operation: 'remove',
-        id: scheduleId,
-      });
     } catch {
       return internalError();
     }
     if (!(await flushSession(ctx, agent.session))) return persistenceError();
+    // flush 成功后再撤销所有权（失败时保留：日志里的 delete 可能未落盘，
+    // 运行时还要按 sidecar 继续追踪该任务）。
+    removeOwnership(sessionId, scheduleId);
     return { ok: true, id, deleted: true };
   });
 }
@@ -607,20 +623,24 @@ export async function userScheduleEditPrompt(
       return toInputError(error);
     }
     const delivery = deliveries.get(scheduleId) ?? 'context';
+    // 新所有权先写 sidecar（create 事件到达投影 fold 时按 sidecar 判定归属）；
+    // 旧条目在 flush 成功后再撤销（失败回滚两侧）。
+    const sessionId = agent.session.header?.id;
+    const previousEntry = getOwnership(sessionId, scheduleId);
+    recordOwnership(sessionId, record.id, delivery);
     try {
       agent.session.append('schedule/change', { version: 1, operation: 'delete', id: scheduleId });
-      agent.session.append(OWNED_EVENT, { version: 1, operation: 'remove', id: scheduleId });
       agent.session.append('schedule/change', { version: 1, operation: 'create', schedule: record });
-      agent.session.append(OWNED_EVENT, {
-        version: 1,
-        operation: 'add',
-        id: record.id,
-        ...(delivery === 'user' ? { delivery: 'user' as const } : {}),
-      });
     } catch {
+      removeOwnership(sessionId, record.id);
       return internalError();
     }
-    if (!(await flushSession(ctx, agent.session))) return persistenceError();
+    if (!(await flushSession(ctx, agent.session))) {
+      removeOwnership(sessionId, record.id);
+      if (previousEntry !== undefined) recordOwnership(sessionId, scheduleId, previousEntry.delivery);
+      return persistenceError();
+    }
+    removeOwnership(sessionId, scheduleId);
     const view = scheduleView(record, Date.now());
     return { ok: true, ...serializeScheduleView(view) };
   });

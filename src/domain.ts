@@ -5,8 +5,11 @@
  * dsh-schedule 对 `schedule/change` 荷载采用严格解码（`hasExactKeys` 拒绝任何
  * 多余字段）。因此本插件**不会**在 `schedule/change` 里追加 `source` 字段——
  * 那会让 dsh-schedule 自身 fold 抛 `corrupt_schedule_log`，破坏 AC-20 互不干扰。
- * 用户来源改用本插件自有的伴生事件 `session-scheduler/user-schedule` 记录：
- * dsh-schedule 的 fold 会跳过非 `schedule/change` 事件，天然互不干扰。
+ * 用户来源**不再**用伴生会话事件记录（2026-09 根治）：曾用自有事件
+ * `session-scheduler/user-schedule` 写进会话日志，但该类型不在宿主词汇表内，
+ * 持久化层在特定时序下会静默丢行、留下永久 seq 缺口，导致整份历史被拒读。
+ * 现改为 sidecar 文件（见 ownership-store.ts）；该事件类型仅作**读兼容**
+ * 保留（旧日志可能仍含此事件，注册 + fold 逻辑不再写入）。
  *
  * @module dsh-session-scheduler/domain
  */
@@ -20,7 +23,7 @@ export const name = 'dsh-session-scheduler';
 /** 会话投影键：GUI 通过 `useProjection` / `faceOf` 读取用户任务列表。 */
 export const PROJECTION_KEY = 'userSchedules';
 
-/** 伴生所有权事件类型（记录哪些 schedule id 由用户工具创建）。 */
+/** 伴生所有权事件类型（**历史遗留，仅读兼容**；新写入一律走 ownership-store）。 */
 export const OWNED_EVENT = 'session-scheduler/user-schedule';
 
 /**
@@ -95,6 +98,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * domain.ts，反向 import 会形成环。
  */
 export interface UserScheduleProjectionState {
+  /** 会话 id（init 时由 header 注入；apply 据此查询所有权 sidecar 缓存）。 */
+  readonly sessionId: string;
   readonly owned: readonly string[];
   readonly active: readonly {
     id: string;

@@ -12,7 +12,39 @@ PRD 想在 `schedule/change` 荷载里加 `source: 'user-tool'` 区分创建来�
 
 dsh-session 的持久化读路径在加载历史时逐条校验事件类型：不在核心白名单 `KNOWN_SESSION_EVENT_TYPES` 里且未标 envelope `ignorable:true` 的事件，会让**整份日志被拒读**（`SessionFormatUnsupportedError`，GUI 表现为「历史加载失败」）——而伴生事件（见 §1）恰好是插件自有词汇。当前构建的 `Session.append(type, data)` 不暴露 `ignorable` 字段、核心文档明示插件注册面暂缓提供，因此本插件在 `apply()` 最先调用 `registerOwnedSessionEventType()` 把自有类型登记进宿主集合（进程级、幂等；该模块仅限 host 端引用，client bundle 不得引入）。
 
-> TODO(上游)：待 dsh-session 暴露 append 侧 `ignorable` 标记后改为写入时标记（更符合 envelope 契约），并移除运行时注册。
+> TODO(上游)：待 dsh-session 暴露 append 侧 `ignorable` 标记后，可在**确有需要**时恢复伴生事件方案并改为写入时标记。
+
+## 1c. 所有权彻底移出会话日志：sidecar 文件（2026-09 缺口事故的根治）
+
+**事故**：宿主持久化层在特定时序下会「seq 已消费但行未落盘」——本插件写入的伴生事件
+`session-scheduler/user-schedule` 恰好命中：内存日志长度 +1，行却没写进磁盘，日志里
+留下**永久 seq 缺口**。dsh-session 的读路径（含 v0→v3 格式迁移）对缺口 fail-closed，
+整份历史被拒读，GUI 表现为「历史加载失败：… has seq gap (expected N, got N+1)」。
+2026-09-10 已用 position-aware 重编号脚本离线修复 79 份受损日志（备份在
+`~/.dsh/sessions/.seqgap-repair-backup-20260910/`），但伴生事件本身随行丢失、
+不可恢复（v0→v1 迁移拒绝未知历史类型，重插即让日志再次不可读）。
+
+**决策**：所有权 + 投递形态（`/later` 的 `delivery:'user'`）**不再写入会话日志**，
+改存插件自己的 sidecar 文件：
+
+- 路径：`<DSH_HOME>/plugin-state/session-scheduler/<sessionId>.json`
+  （解析优先级 `DSH_SESSION_SCHEDULER_STATE_DIR` > `$DSH_HOME` > `~/.dsh`；
+  见 `ownership-store.ts`）。
+- 原子写（tmp + rename）；损坏文件改名保留（`.corrupt-<ts>`）后按空表继续；
+  进程内按 (mtime,size) 缓存，热路径零读盘。
+- 写序：**sidecar 先于 `session.append`**（投影 fold 在 create 事件到达时按
+  sidecar 判定归属），flush 失败则**回滚** sidecar（避免与日志漂移）；
+  delete 在 **flush 成功后**才撤销（失败时保留，运行时仍可追踪该任务）。
+- 投影 `init(header)` 按 sessionId 从 sidecar 装载（进程重启后恢复 GUI 归属）；
+  `apply` 的 create 事件查 sidecar 缓存；日志里残留的历史伴生事件仍按原逻辑
+  fold（读兼容）。投影 state 新增 `sessionId`，`stateVersion` 2 → 3。
+
+**代价与边界**：
+1. 会话删除后 sidecar 文件残留（每会话 ≤100 条、每条 ~100B，可忽略；后续可在
+   会话清理钩子里顺手删除）。
+2. 跨进程写同一 sidecar 采用 last-writer-wins（用户工具操作按 agent 串行，
+   实际无并发写）。
+3. 旧版伴生事件的注册（§1b）保留：读兼容旧日志；插件本身不再产生新伴生事件。
 
 ## 2. 客户端↔宿主变更通道：slash command
 

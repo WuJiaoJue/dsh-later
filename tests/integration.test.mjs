@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { foldScheduleEvents, renderReminderFraming } from '@deepseek-ai/dsh-schedule';
 import { userScheduleCreate } from '../lib/user-tools.js';
+import { freshOwnershipDir } from './helpers/ownership-state.mjs';
 import {
   applyUserScheduleProjection,
   initUserScheduleProjection,
@@ -15,7 +16,7 @@ import {
 
 class FakeSession {
   constructor(seedLength = 0, seedEvents = []) {
-    this.header = { seedLength };
+    this.header = { id: 'session-e2e', seedLength };
     this.events = seedEvents.map((event, index) => ({ seq: index, time: 0, ...event }));
   }
   append(type, data) {
@@ -28,6 +29,7 @@ const fakeAgent = () => ({ id: 'agent-e2e', session: new FakeSession(), ctx: {} 
 const fakeCtx = { sessions: { flush: async () => true } };
 
 test('创建 → dsh-schedule 可渲染 framing → dispatch → 投影移除', async () => {
+  freshOwnershipDir();
   const agent = fakeAgent();
   const created = await userScheduleCreate(
     {
@@ -57,7 +59,7 @@ test('创建 → dsh-schedule 可渲染 framing → dispatch → 投影移除', 
   assert.equal(foldedAfter.active.length, 0);
 
   // 4) 本插件投影随事件流折叠 → 用户任务移除
-  let state = initUserScheduleProjection();
+  let state = initUserScheduleProjection(agent.session.header);
   for (const event of agent.session.events) {
     state = applyUserScheduleProjection(state, event);
   }
@@ -65,6 +67,7 @@ test('创建 → dsh-schedule 可渲染 framing → dispatch → 投影移除', 
 });
 
 test('every 任务：dispatch 后仍活动并在投影中推进下一次', async () => {
+  freshOwnershipDir();
   const agent = fakeAgent();
   const created = await userScheduleCreate(
     { prompt: '每 5 分钟查一次', every_seconds: 300, time_zone: 'Asia/Shanghai' },
@@ -85,7 +88,7 @@ test('every 任务：dispatch 后仍活动并在投影中推进下一次', async
   const folded = foldScheduleEvents(agent.session.events, 0);
   assert.equal(folded.active.length, 1); // every 仍活动
 
-  let state = initUserScheduleProjection();
+  let state = initUserScheduleProjection(agent.session.header);
   for (const event of agent.session.events) {
     state = applyUserScheduleProjection(state, event);
   }

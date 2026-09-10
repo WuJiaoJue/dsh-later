@@ -14,11 +14,15 @@ import {
   userScheduleList,
 } from '../lib/user-tools.js';
 import { OWNED_EVENT } from '../lib/domain.js';
+import { freshOwnershipDir, markOwnership } from './helpers/ownership-state.mjs';
+import { getOwnership, hasOwnership } from '../lib/ownership-store.js';
 
 /** 极简假 Session：支持 events/header/append。 */
+let fakeSessionSeq = 0;
+
 class FakeSession {
   constructor(seedLength = 0, seedEvents = []) {
-    this.header = { seedLength };
+    this.header = { id: `session-test-${++fakeSessionSeq}`, seedLength };
     this.events = seedEvents.map((event, index) => ({ seq: index, time: 0, ...event }));
     this.appended = [];
   }
@@ -60,13 +64,12 @@ test('create 写入与 dsh-schedule 完全兼容的 schedule/change 事件', asy
   assert.equal(result.delivery_mode, 'session-local');
   assert.equal(result.state, 'scheduled');
 
-  // 事件数量：schedule/change + owned
+  // 事件数量：只写 schedule/change（所有权走 sidecar，不再写伴生事件）
+  const ownedEvents = agent.session.events.filter((e) => e.type === OWNED_EVENT);
+  assert.equal(ownedEvents.length, 0, '不再写入伴生所有权事件');
+  assert.equal(hasOwnership(agent.session.header.id, result.id), true);
   const changes = agent.session.events.filter((e) => e.type === 'schedule/change');
-  const owned = agent.session.events.filter((e) => e.type === OWNED_EVENT);
   assert.equal(changes.length, 1);
-  assert.equal(owned.length, 1);
-  assert.equal(owned[0].data.operation, 'add');
-  assert.equal(owned[0].data.id, result.id);
 
   // dsh-schedule 自身 fold 能解码（无 source 字段 → 不会抛 corrupt）
   const folded = foldScheduleEvents(agent.session.events, 0);
@@ -191,6 +194,7 @@ test('永久分配不重复的 id', async () => {
 // ─── P0-1：delivery 信任边界 ───────────────────────────────────────────
 
 test('P0-1：工具/通用通道夹带 delivery:"user" 必须被忽略（安全回归）', async () => {
+  freshOwnershipDir();
   const agent = fakeAgent();
   // 模型在工具参数 / GUI 在面板载荷里夹带 delivery —— 一律无效
   const smuggled = await userScheduleCreate(
@@ -199,9 +203,9 @@ test('P0-1：工具/通用通道夹带 delivery:"user" 必须被忽略（安全�
     fakeCtx,
   );
   assert.ok(smuggled.ok);
-  const owned = agent.session.events.filter((e) => e.type === OWNED_EVENT);
-  assert.equal(owned.length, 1);
-  assert.equal(owned[0].data.delivery, undefined); // 未获得代发形态
+  const ownedEvents = agent.session.events.filter((e) => e.type === OWNED_EVENT);
+  assert.equal(ownedEvents.length, 0, '不再写入伴生所有权事件');
+  assert.equal(getOwnership(agent.session.header.id, smuggled.id)?.delivery, 'context'); // 未获得代发形态
 });
 
 test('P0-1：仅可信通道（trustedDelivery）能声明 user 代发形态', async () => {
@@ -214,8 +218,7 @@ test('P0-1：仅可信通道（trustedDelivery）能声明 user 代发形态', a
     { trustedDelivery: 'user' }, // 只有人类显式输入的 /later 走这里
   );
   assert.ok(later.ok);
-  const owned = agent.session.events.filter((e) => e.type === OWNED_EVENT);
-  assert.equal(owned[0].data.delivery, 'user');
+  assert.equal(getOwnership(agent.session.header.id, later.id)?.delivery, 'user');
 });
 
 // ─── P1-8：时区可选 ──────────────────────────────────────────────────
@@ -231,6 +234,66 @@ test('P1-8：time_zone 缺省时用检测时区创建成功', async () => {
 });
 
 // ─── P0-4：过期 at 任务禁止改内容 ─────────────────────────────────────
+
+test('create 的 sidecar 所有权在 flush 失败时回滚', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const failingCtx = { sessions: { flush: async () => false } };
+  const result = await userScheduleCreate(
+    { prompt: '不会落盘', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    failingCtx,
+  );
+  assert.ok(!result.ok && result.code === 'persistence_uncertain');
+  assert.equal(hasOwnership(agent.session.header.id, result.id), false, 'sidecar 已回滚');
+});
+
+test('delete 成功后撤销 sidecar 所有权；flush 失败时保留', async () => {
+  freshOwnershipDir();
+  const sessionId = 'session-delete-case';
+  const agent = fakeAgent();
+  agent.session.header.id = sessionId;
+  const created = await userScheduleCreate(
+    { prompt: '待删', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  assert.equal(hasOwnership(sessionId, created.id), true);
+  await userScheduleDelete(created.id, agent, fakeCtx);
+  assert.equal(hasOwnership(sessionId, created.id), false);
+  // flush 失败：保留所有权（日志可能未落盘，运行时仍需追踪）
+  const agent2 = fakeAgent();
+  agent2.session.header.id = sessionId;
+  const created2 = await userScheduleCreate(
+    { prompt: '删除失败', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent2,
+    fakeCtx,
+  );
+  assert.ok(created2.ok);
+  const failing = { sessions: { flush: async () => false } };
+  await userScheduleDelete(created2.id, agent2, failing);
+  assert.equal(hasOwnership(sessionId, created2.id), true, 'flush 失败时保留 sidecar');
+});
+
+test('edit 保留投递形态并迁移 sidecar 所有权', async () => {
+  freshOwnershipDir();
+  const sessionId = 'session-edit-case';
+  const agent = fakeAgent();
+  agent.session.header.id = sessionId;
+  const created = await userScheduleCreate(
+    { prompt: '稍后替我说', after_seconds: 600 },
+    agent,
+    fakeCtx,
+    DEFAULT_MAX_SCHEDULES,
+    { trustedDelivery: 'user' },
+  );
+  assert.ok(created.ok);
+  const edited = await userScheduleEditPrompt(created.id, '改个说法', agent, fakeCtx);
+  assert.ok(edited.ok);
+  assert.equal(getOwnership(sessionId, created.id), undefined, '旧 id 所有权已撤销');
+  assert.equal(getOwnership(sessionId, edited.id)?.delivery, 'user', '新 id 继承 user 形态');
+});
 
 test('P0-4：编辑已过期的 at 任务返回 already_overdue，不产生新事件', async () => {
   const pastRecord = {
