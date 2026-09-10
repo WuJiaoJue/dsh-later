@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="dsh-session-scheduler/docs/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
-<img src="dsh-session-scheduler/docs/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
-<img src="dsh-session-scheduler/docs/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
 # dsh-session-scheduler — 会话内定时消息插件
 
@@ -33,21 +33,21 @@ DSH 现有定时能力各缺一角：内置定时只暴露给模型、用户无�
 
 **定时面板** —— 快捷时段 / 自定义时间 / 已设定任务列表：
 
-<img src="dsh-session-scheduler/docs/screenshot-panel.png" width="340" alt="定时提醒面板"/>
+<img src="docs/media/screenshot-panel.png" width="340" alt="定时提醒面板"/>
 
 **待发送 dock** —— 输入框上方倒计时条（行内编辑 / 取消；下方即输入框）：
 
-<img src="dsh-session-scheduler/docs/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
+<img src="docs/media/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
 
 **到期真实触发** —— 到点后对话里出现「⏰ 定时提醒」消息（关网页也照常触发）：
 
-<img src="dsh-session-scheduler/docs/screenshot-fired.png" width="560" alt="到期提醒消息"/>
+<img src="docs/media/screenshot-fired.png" width="560" alt="到期提醒消息"/>
 
 **动图演示**：
 
 | 创建定时提醒（输入 → 面板 → 加入 → dock） | 到期触发（倒计时 → 收到消息） |
 |---|---|
-| <img src="dsh-session-scheduler/docs/docs-scheduler-create.gif" width="480" alt="创建定时提醒演示"/> | <img src="dsh-session-scheduler/docs/docs-scheduler-fired.gif" width="480" alt="到期触发演示"/> |
+| <img src="docs/media/docs-scheduler-create.gif" width="480" alt="创建定时提醒演示"/> | <img src="docs/media/docs-scheduler-fired.gif" width="480" alt="到期触发演示"/> |
 
 ---
 
@@ -146,7 +146,7 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 | 自定义上限 | `allowLongPrompts` 开启时的字符上限 | 1000 |
 | 工作时间 / 午休 / 晚间静默 | 智能时段 5 个 HH:mm 字段，决定快捷芯片与智能排期 | 见设置页 |
 
-> 进阶：也可以用 `cordis.patch.yml` 在启动期覆盖默认值（如 `maxSchedules`），见 `dsh-session-scheduler/docs/` 与 schema。
+> 进阶：也可以用 `cordis.patch.yml` 在启动期覆盖默认值（如 `maxSchedules`），见 `docs/` 与 schema。
 
 ---
 
@@ -154,15 +154,15 @@ dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
 
 以下内容面向开发者与维护者，已移出本 README：
 
-- [架构与数据流](./dsh-session-scheduler/docs/architecture.md) — 宿主/客户端分层、事件流、目录结构、调度器原理
-- [关键设计决策](./dsh-session-scheduler/docs/design-decisions.md) — source 字段、slash 通道、fork 隔离、注入防护等取舍
-- [验证状态与验收对照](./dsh-session-scheduler/docs/verification.md) — 测试、线上 E2E、跨内核代次兼容、AC 对照表
+- [架构与数据流](./docs/architecture.md) — 宿主/客户端分层、事件流、目录结构、调度器原理
+- [关键设计决策](./docs/design-decisions.md) — source 字段、slash 通道、fork 隔离、注入防护等取舍
+- [验证状态与验收对照](./docs/verification.md) — 测试、线上 E2E、跨内核代次兼容、AC 对照表
 
 ## 参考
 
-- PRD 与设计文档：项目根目录 `prd.md`、`dsh-session-scheduler/docs/`
-- dsh-schedule 源码分析：`references/dsh-schedule-analysis.md`
-- dsh-sleep-send 源码分析：`references/dsh-sleep-send-analysis.md`
+- PRD 与设计文档：项目根目录 `prd.md`、`docs/`
+- dsh-schedule 源码分析：`../references/dsh-schedule-analysis.md`
+- dsh-sleep-send 源码分析：`../references/dsh-sleep-send-analysis.md`
 
 ## 许可
 
@@ -174,8 +174,8 @@ MIT
 
 **侧栏定时状态标识** · 定时中 · 紧急（≤ 5 分钟）· 已到期
 
-<img src="dsh-session-scheduler/docs/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
-<img src="dsh-session-scheduler/docs/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
-<img src="dsh-session-scheduler/docs/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
 
 </div>
