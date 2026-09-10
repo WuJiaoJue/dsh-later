@@ -47,7 +47,7 @@ DSH 现有定时能力各缺一角：内置定时只暴露给模型、用户无�
 
 | 创建定时提醒（输入 → 面板 → 加入 → dock） | 到期触发（倒计时 → 收到消息） |
 |---|---|
-| <img src="docs/media/docs-scheduler-create.gif" width="380" alt="创建定时提醒演示"/> | <img src="docs/media/docs-scheduler-fired.gif" width="380" alt="到期触发演示"/> | <img src="docs/media/docs-later.gif" width="300" alt="/later 命令演示"/> |
+| <img src="docs/media/docs-scheduler-create.gif" width="380" alt="创建定时提醒演示"/> | <img src="docs/media/docs-scheduler-fired.gif" width="380" alt="到期触发演示"/> | <img src="docs/media/docs-later.gif" width="280" alt="/later 命令演示"/> |
 > 第三张动图：在输入框直接输入 `/later +60m 提醒内容` 即可快速创建延迟发送。
 
 ---
