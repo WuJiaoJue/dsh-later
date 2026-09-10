@@ -198,16 +198,27 @@ async function clearInput(page, tb) {
   fs.mkdirSync(FR_LATER, { recursive: true });
   await page.addStyleTag({ content: '* { caret-color: transparent !important; }' });
   await clearInput(page, tb); await sleep(300);
-  await page.screenshot({ path: path.join(FR_LATER, 'later-00.png') });
+  // 裁剪区域：输入框特写（上文探测到输入框约 CSS 419,411 708×52，2x DPR）；
+  // 取输入框左上微调 + 足够高度覆盖命令整行与 dock 出现
+  const laClip = await (async () => {
+    const b = await tb.boundingBox();
+    return {
+      x: Math.max(0, (b.x - 60) * 2),
+      y: Math.max(0, (b.y - 60) * 2),
+      width: (Math.min(1280, b.width + 120)) * 2,
+      height: (b.height + 120) * 2,
+    };
+  })();
+  await page.screenshot({ path: path.join(FR_LATER, 'later-00.png'), clip: laClip });
   await tb.click();
   await tb.type('/later +60m 下午4点提醒我提交周报', { delay: 28 });
   await sleep(500);
-  await page.screenshot({ path: path.join(FR_LATER, 'later-01.png') });
+  await page.screenshot({ path: path.join(FR_LATER, 'later-01.png'), clip: laClip });
   await tb.press('Enter');
   await sleep(1500);
-  await page.screenshot({ path: path.join(FR_LATER, 'later-02.png') });
+  await page.screenshot({ path: path.join(FR_LATER, 'later-02.png'), clip: laClip });
   await sleep(800);
-  await page.screenshot({ path: path.join(FR_LATER, 'later-03.png') });
+  await page.screenshot({ path: path.join(FR_LATER, 'later-03.png'), clip: laClip });
   log('later frames done');
   await page.locator('[aria-label="删除提醒"]').first().click().catch(() => {});
   await clearInput(page, tb);
