@@ -46,15 +46,15 @@ async function waitIdle(page) {
 }
 
 async function openPanel(page) {
-  await page.getByRole('button', { name: '定时发送' }).click();
+  await page.getByRole('button', { name: '定时发送' }).click({ force: true });
   await page.waitForTimeout(600);
   const panel = page.locator('.ss-panel');
   if (await panel.count() === 0) throw new Error('panel did not open');
   return panel;
 }
 
-async function fillCustomTime(panel, when) {
-  await page.getByText('自定义…', { exact: true }).click();
+async function fillCustomTime(page, panel, when) {
+  await page.getByText('自定义…', { exact: true }).click({ force: true });
   await sleep(400);
   const dateStr = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;
   const timeStr = `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
@@ -107,7 +107,7 @@ async function clearInput(page, tb) {
   await page.getByRole('button', { name: /^加入/ }).click();
   await sleep(900);
   await openPanel(page);
-  await fillCustomTime(page.locator('.ss-panel'), new Date(Date.now() + 40 * 60000));
+  await fillCustomTime(page, page.locator('.ss-panel'), new Date(Date.now() + 40 * 60000));
   await page.locator('.ss-panel-title').click(); // 去掉时间输入的选中态
   await sleep(400);
   await page.locator('.ss-panel').screenshot({ path: path.join(OUT, 'screenshot-panel.png') });
@@ -142,7 +142,7 @@ async function clearInput(page, tb) {
   await tb.click(); await tb.type(DEMO_TEXT, { delay: 20 });
   const panel = await openPanel(page);
   const fireDate = new Date(Date.now() + 4 * 60000); fireDate.setSeconds(0, 0);
-  await fillCustomTime(panel, fireDate);
+  await fillCustomTime(page, panel, fireDate);
   await page.getByRole('button', { name: /^加入/ }).click(); await sleep(900);
   const dock = page.locator('.ss-dock-root');
   if (await dock.count() === 0) throw new Error('dock missing');
