@@ -9,6 +9,7 @@ import {
   viewUserScheduleProjection,
 } from '../lib/projection.js';
 import { OWNED_EVENT } from '../lib/domain.js';
+import { freshOwnershipDir, markOwnership } from './helpers/ownership-state.mjs';
 
 /** 构造一条 schedule/change create 事件（与 dsh-schedule 完全兼容）。 */
 function createEvent(schedule, seq = 0) {
@@ -130,4 +131,30 @@ test('无关事件返回同一引用（不触发推送）', () => {
   const state = initUserScheduleProjection();
   const unrelated = { type: 'user/message', seq: 0, time: 0, data: {} };
   assert.equal(applyUserScheduleProjection(state, unrelated), state);
+});
+
+test('所有权走 sidecar：init(header) 装载 + create 事件按 sidecar 判定归属', () => {
+  freshOwnershipDir();
+  const header = { id: 'session-sidecar-case' };
+  markOwnership(header.id, 'schedule-1', 'context');
+  let state = initUserScheduleProjection(header);
+  assert.deepEqual([...state.owned], ['schedule-1']);
+  state = applyUserScheduleProjection(state, createEvent(atSchedule, 0));
+  const view = viewUserScheduleProjection(state);
+  assert.equal(view.schedules.length, 1);
+  assert.equal(view.schedules[0].id, 'schedule-1');
+  // sidecar 未标记的 create → 非 user-owned（模型经核心工具创建）
+  state = applyUserScheduleProjection(state, createEvent(everySchedule, 1));
+  assert.equal(viewUserScheduleProjection(state).schedules.length, 1);
+});
+
+test('delete 事件同时撤销视图内所有权（sidecar 清理由工具路径负责）', () => {
+  freshOwnershipDir();
+  const header = { id: 'session-delete-view-case' };
+  markOwnership(header.id, 'schedule-1', 'context');
+  let state = initUserScheduleProjection(header);
+  state = applyUserScheduleProjection(state, createEvent(atSchedule, 0));
+  state = applyUserScheduleProjection(state, deleteEvent('schedule-1', 1));
+  assert.deepEqual([...state.owned], []);
+  assert.equal(viewUserScheduleProjection(state).schedules.length, 0);
 });

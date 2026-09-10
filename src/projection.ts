@@ -18,6 +18,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { decodeScheduleChange, resolveEveryOccurrence } from '@deepseek-ai/dsh-schedule';
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT, PROJECTION_KEY } from './domain.js';
+import { allOwnership, hasOwnership } from './ownership-store.js';
 import type {
   UserScheduleOwnedChange,
   UserScheduleProjectionValue,
@@ -64,6 +65,8 @@ const scheduleRecordStateSchema = z
   .passthrough();
 
 export const userSchedulesStateSchema = z.object({
+  /** 会话 id（init 由 header 注入；apply 据此查询所有权 sidecar 缓存）。 */
+  sessionId: z.string(),
   /** 用户工具创建的 schedule id 集合（数组承载集合语义）。 */
   owned: z.array(z.string()),
   /** 当前活动记录（保持首现顺序，view 侧再排序）。 */
@@ -77,6 +80,8 @@ export type StoredScheduleRecord = ScheduleRecord & { readonly createdAt?: numbe
 
 /** 投影内部状态（plain JSON：owned/active 用数组承载）。 */
 export interface UserScheduleProjectionState {
+  /** 会话 id（init 由 header 注入）。 */
+  readonly sessionId: string;
   /** 用户工具创建的 schedule id 集合。 */
   readonly owned: readonly string[];
   /** 当前活动记录（按 schedule/change 严格 fold）。 */
@@ -85,9 +90,13 @@ export interface UserScheduleProjectionState {
   readonly seedSeq: number;
 }
 
-/** 空日志初始状态。 */
-export function initUserScheduleProjection(): UserScheduleProjectionState {
-  return { owned: [], active: [], seedSeq: -1 };
+/** 初始状态：按会话 id 从所有权 sidecar 装载（进程重启后恢复 GUI 归属）。 */
+export function initUserScheduleProjection(
+  header?: { readonly id?: string },
+): UserScheduleProjectionState {
+  const sessionId = typeof header?.id === 'string' && header.id.length > 0 ? header.id : '';
+  const entries = sessionId.length > 0 ? allOwnership(sessionId) : {};
+  return { sessionId, owned: Object.keys(entries), active: [], seedSeq: -1 };
 }
 
 /** 序列化一条活动记录为 wire 项（不含随墙钟变化的状态）。 */
@@ -122,7 +131,13 @@ export function applyUserScheduleProjection(
   // 派生会话边界：重置自身，忽略继承前缀（AC-07 fork 隔离）。
   if (event.type === 'session/end-seed') {
     if (state.seedSeq === event.seq && state.owned.length === 0 && state.active.length === 0) return state;
-    return { owned: [], active: [], seedSeq: event.seq };
+    // 派生会话（fork）：sidecar 以 sessionId 隔离，派生 id 天然空表；此处再清一次
+    // 兜底「同 id 重播种」场景，保持 AC-07 语义。
+    const owned =
+      state.sessionId.length > 0
+        ? Object.keys(allOwnership(state.sessionId))
+        : [];
+    return { sessionId: state.sessionId, owned, active: [], seedSeq: event.seq };
   }
   if (seedIsBefore(state, event)) return state;
 
@@ -131,11 +146,12 @@ export function applyUserScheduleProjection(
     if (typeof data !== 'object' || data === null || data.version !== 1) return state;
     if (data.operation === 'add') {
       if (state.owned.includes(data.id)) return state;
-      return { owned: [...state.owned, data.id], active: state.active, seedSeq: state.seedSeq };
+      return { sessionId: state.sessionId, owned: [...state.owned, data.id], active: state.active, seedSeq: state.seedSeq };
     }
     if (data.operation === 'remove') {
       if (!state.owned.includes(data.id)) return state;
       return {
+        sessionId: state.sessionId,
         owned: state.owned.filter((id) => id !== data.id),
         active: state.active,
         seedSeq: state.seedSeq,
@@ -154,13 +170,20 @@ export function applyUserScheduleProjection(
     switch (change.operation) {
       case 'create': {
         const record = change.schedule as StoredScheduleRecord;
+        // 所有权判定改走 sidecar（用户工具在 append 前写 sidecar）。
+        // 历史遗留：日志中的 OWNED 事件仍由上方独立分支维护（读兼容）。
+        let owned = state.owned;
+        if (!owned.includes(record.id) && state.sessionId.length > 0 && hasOwnership(state.sessionId, record.id)) {
+          owned = [...owned, record.id];
+        }
         // 固化创建时刻（事件 time），供客户端进度条按真实起点计算
         const withCreated: StoredScheduleRecord =
           typeof event.time === 'number' ? { ...record, createdAt: event.time } : record;
         const existing = state.active.find((entry) => entry.id === record.id);
-        if (existing === withCreated) return state;
+        if (existing === withCreated && owned === state.owned) return state;
         return {
-          owned: state.owned,
+          sessionId: state.sessionId,
+          owned,
           active: existing === undefined
             ? [...state.active, withCreated]
             : state.active.map((entry) => (entry.id === record.id ? withCreated : entry)),
@@ -168,9 +191,12 @@ export function applyUserScheduleProjection(
         };
       }
       case 'delete': {
-        if (!state.active.some((entry) => entry.id === change.id)) return state;
+        if (!state.active.some((entry) => entry.id === change.id) && !state.owned.includes(change.id)) return state;
+        // 删除即撤销所有权声明（sidecar 由工具路径在 flush 后清理；此处先清视图）。
+        const owned = state.owned.filter((id) => id !== change.id);
         return {
-          owned: state.owned,
+          sessionId: state.sessionId,
+          owned,
           active: state.active.filter((entry) => entry.id !== change.id),
           seedSeq: state.seedSeq,
         };
@@ -192,7 +218,7 @@ export function applyUserScheduleProjection(
           nextActive = state.active.filter((entry) => entry.id !== change.id);
         }
         if (nextActive === state.active) return state;
-        return { owned: state.owned, active: nextActive, seedSeq: state.seedSeq };
+        return { sessionId: state.sessionId, owned: state.owned, active: nextActive, seedSeq: state.seedSeq };
       }
       /* c8 ignore next 2 -- decodeScheduleChange 是闭包联合 */
       default:
@@ -236,6 +262,6 @@ export const userSchedulesProjectionUnit = {
     viewSchema: userSchedulesSchema,
     view: viewUserScheduleProjection,
   },
-  // v2：active 记录新增 createdAt（进度条真实起点）；旧缓存行按版本丢弃
-  stateVersion: 2,
+  // v3：状态新增 sessionId + 所有权改走 sidecar（init 装载）；旧缓存行按版本丢弃
+  stateVersion: 3,
 } as const;
