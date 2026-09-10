@@ -44,5 +44,28 @@ if [[ -n "$CROP" ]]; then
   convert "$OUT/fired-full.png" -crop "${w}x${h}+${x}+${y}" +repage "$OUT/screenshot-fired.png"
 fi
 
-ls -la "$OUT"/docs-scheduler-*.gif "$OUT"/screenshot-*.png 2>/dev/null || true
+# 3) /later 命令演示 GIF：4 帧
+FR_L="$OUT/frames-later"
+if [[ -d "$FR_L" ]] && ls "$FR_L"/later-*.png >/dev/null 2>&1; then
+  {
+    echo "ffconcat version 1.0"
+    printf "file '%s/later-00.png'
+duration 0.6
+" "$FR_L"
+    printf "file '%s/later-01.png'
+duration 1.4
+" "$FR_L"
+    printf "file '%s/later-02.png'
+duration 1.0
+" "$FR_L"
+    printf "file '%s/later-03.png'
+duration 1.2
+" "$FR_L"
+    printf "file '%s/later-03.png'
+" "$FR_L"
+  } > "$OUT/list-later.txt"
+  pal "$OUT/list-later.txt" "$OUT/docs-later.gif"
+fi
+
+ls -la "$OUT"/docs-scheduler-*.gif "$OUT"/docs-later.gif "$OUT"/screenshot-*.png 2>/dev/null || true
 echo "done → $OUT"

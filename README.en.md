@@ -47,7 +47,8 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 | Creating a reminder (type → panel → add → dock) | Firing when due (countdown → message arrives) |
 |---|---|
-| <img src="docs/media/docs-scheduler-create.gif" width="480" alt="Create reminder demo"/> | <img src="docs/media/docs-scheduler-fired.gif" width="480" alt="Due firing demo"/> |
+| <img src="docs/media/docs-scheduler-create.gif" width="380" alt="Create reminder demo"/> | <img src="docs/media/docs-scheduler-fired.gif" width="380" alt="Due firing demo"/> | <img src="docs/media/docs-later.gif" width="300" alt="/later command demo"/> |
+> Third GIF: type `/later +60m reminder text` in the input box for quick delayed-send.
 
 ---
 
