@@ -6,11 +6,11 @@
 
 | 文件 | 内容 | 采集方式 |
 |---|---|---|
-| `docs/screenshot-panel.png` | 定时面板（快捷时段 / 自定义时间 / 已设定列表） | 元素截图（2x） |
-| `docs/screenshot-dock.png` | 待发送 dock + 输入框（倒计时中段，进度条可见） | 固定区域裁剪（2x） |
-| `docs/screenshot-fired.png` | 到期「⏰ 定时提醒」消息块 | 真实触发后全页裁剪 |
-| `docs/docs-scheduler-create.gif` | 输入 → 面板 → 加入 → dock | 7 帧分镜 + ffmpeg palette |
-| `docs/docs-scheduler-fired.gif` | 倒计时跳动 → 注入行 + toast → 定时提醒消息 | 1fps 连续采帧 + 变速合成 |
+| `docs/media/screenshot-panel.png` | 定时面板（快捷时段 / 自定义时间 / 已设定列表） | 元素截图（2x） |
+| `docs/media/screenshot-dock.png` | 待发送 dock + 输入框（倒计时中段，进度条可见） | 固定区域裁剪（2x） |
+| `docs/media/screenshot-fired.png` | 到期「⏰ 定时提醒」消息块 | 真实触发后全页裁剪 |
+| `docs/media/docs-scheduler-create.gif` | 输入 → 面板 → 加入 → dock | 7 帧分镜 + ffmpeg palette |
+| `docs/media/docs-scheduler-fired.gif` | 倒计时跳动 → 注入行 + toast → 定时提醒消息 | 1fps 连续采帧 + 变速合成 |
 
 中英 README 共用同一组素材（`README.md` / `README.en.md`）。
 

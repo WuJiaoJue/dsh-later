@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
 # dsh-session-scheduler — In-Session Scheduled Message Plugin
 
@@ -33,21 +33,21 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 
 **Schedule panel** — quick slots / custom time / pending list:
 
-<img src="docs/screenshot-panel.png" width="340" alt="Schedule panel"/>
+<img src="docs/media/screenshot-panel.png" width="340" alt="Schedule panel"/>
 
 **Pending dock** — countdown rows above the input box (inline edit / cancel):
 
-<img src="docs/screenshot-dock.png" width="700" alt="Pending dock and input box"/>
+<img src="docs/media/screenshot-dock.png" width="700" alt="Pending dock and input box"/>
 
 **A real due-time firing** — when the time comes, a `⏰ Scheduled reminder` message appears in the conversation (fires even with the page closed):
 
-<img src="docs/screenshot-fired.png" width="560" alt="Due-time reminder message"/>
+<img src="docs/media/screenshot-fired.png" width="560" alt="Due-time reminder message"/>
 
 **Animated demos**:
 
 | Creating a reminder (type → panel → add → dock) | Firing when due (countdown → message arrives) |
 |---|---|
-| <img src="docs/docs-scheduler-create.gif" width="480" alt="Create reminder demo"/> | <img src="docs/docs-scheduler-fired.gif" width="480" alt="Due firing demo"/> |
+| <img src="docs/media/docs-scheduler-create.gif" width="480" alt="Create reminder demo"/> | <img src="docs/media/docs-scheduler-fired.gif" width="480" alt="Due firing demo"/> |
 
 ---
 
@@ -174,8 +174,8 @@ MIT
 
 **Sidebar presence indicator** · scheduled · urgent (≤ 5 min) · overdue
 
-<img src="docs/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
 
 </div>

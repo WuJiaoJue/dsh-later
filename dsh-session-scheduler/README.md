@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="64" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
 # dsh-session-scheduler — 会话内定时消息插件
 
@@ -33,21 +33,21 @@ DSH 现有定时能力各缺一角：内置定时只暴露给模型、用户无�
 
 **定时面板** —— 快捷时段 / 自定义时间 / 已设定任务列表：
 
-<img src="docs/screenshot-panel.png" width="340" alt="定时提醒面板"/>
+<img src="docs/media/screenshot-panel.png" width="340" alt="定时提醒面板"/>
 
 **待发送 dock** —— 输入框上方倒计时条（行内编辑 / 取消；下方即输入框）：
 
-<img src="docs/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
+<img src="docs/media/screenshot-dock.png" width="700" alt="待发送 dock 与输入框"/>
 
 **到期真实触发** —— 到点后对话里出现「⏰ 定时提醒」消息（关网页也照常触发）：
 
-<img src="docs/screenshot-fired.png" width="560" alt="到期提醒消息"/>
+<img src="docs/media/screenshot-fired.png" width="560" alt="到期提醒消息"/>
 
 **动图演示**：
 
 | 创建定时提醒（输入 → 面板 → 加入 → dock） | 到期触发（倒计时 → 收到消息） |
 |---|---|
-| <img src="docs/docs-scheduler-create.gif" width="480" alt="创建定时提醒演示"/> | <img src="docs/docs-scheduler-fired.gif" width="480" alt="到期触发演示"/> |
+| <img src="docs/media/docs-scheduler-create.gif" width="480" alt="创建定时提醒演示"/> | <img src="docs/media/docs-scheduler-fired.gif" width="480" alt="到期触发演示"/> |
 
 ---
 
@@ -174,8 +174,8 @@ MIT
 
 **侧栏定时状态标识** · 定时中 · 紧急（≤ 5 分钟）· 已到期
 
-<img src="docs/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
-<img src="docs/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
-<img src="docs/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
+<img src="assets/icons/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
+<img src="assets/icons/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
+<img src="assets/icons/icon-presence-overdue.svg?v=18" width="48" alt="overdue"/>
 
 </div>
