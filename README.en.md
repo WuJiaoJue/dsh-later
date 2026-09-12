@@ -24,13 +24,28 @@
 
 ### Schedule panel
 
+Click the **"Schedule send"** button to the right of the input box. The panel uses the **input box content** as the reminder text; pick a time, then click **"Add · send at HH:MM"** (the button stays disabled until a time is chosen). A countdown row then appears above the input box.
+
 | Capability | Description |
 |---|---|
-| Quick chips | One-tap common slots (work hours / tomorrow morning, etc.) — configurable in settings |
-| Custom time | Relative (`in 30 minutes`) or absolute (`today 18:00`) |
+| Quick chips | One-tap `in 10 minutes` / `in 1 hour` / `work hours` (configurable in settings) |
+| Custom time | "Custom…" opens date + time inputs |
 | Send preview | See the exact due-time form before confirming |
 | Task list | All scheduled items, deletable one by one |
 | Cancel all | Cancel action on the chip clears every reminder in this conversation |
+
+### Time formats
+
+All of these are accepted (`/schedule`, `/later`, and the panel's custom time share the same parser):
+
+| Kind | Examples |
+|---|---|
+| Relative duration | `+30m` · `+1h30m` · `+90s` · `+1w` · `30分钟后` · `半小时后` |
+| Time today | `15:32` · `9点` · `9点半` · `1532` |
+| Relative day + time | `明天9点` · `后天 10:00` |
+| Date + time | `8月21日 15:32` · `2026-08-21 15:32` · `0821-1532` |
+
+A bare time (like `1532`) rolls over to tomorrow if it has already passed today (up to 7 days). Writing `明天`/`后天` is taken literally — if that time has passed you are told to use a concrete date instead. A month/day only (like `8月21日`) rolls over to next year when this year's has passed.
 
 ### Commands
 
@@ -40,7 +55,18 @@
 | `/later <time> <content>` | Delayed send: deliver the content later as yourself |
 | `/schedule every <interval> <content>` | Recurring reminder (interval ≥ 5 min) |
 
+```
+/schedule 明天9点 提交周报
+/later 1532 提醒团队同步进度
+```
+
 The model can also call user tools on your behalf to create/inspect/delete/edit reminders (`user_schedule_create` / `user_schedule_list` / `user_schedule_delete` / `user_schedule_edit`).
+
+### Pending dock
+
+The countdown rows above the input box. Each row ends with three buttons: **Edit reminder** (change the text inline), **Delete reminder** (cancel that item), and **Send now** (push it to the agent immediately, skipping the countdown).
+
+> ⚠️ "Send now" is not a confirm button — it **immediately** delivers the reminder text to the agent and wakes the model. To cancel, use Delete.
 
 ### Sidebar presence indicator
 
@@ -52,7 +78,7 @@ Conversations with active reminders show a pixel clock in their sidebar row (alo
 | <img src="assets/icons/icon-presence-urgent.svg?v=18" width="28" alt="urgent"/> | Amber · next fire within 5 minutes |
 | <img src="assets/icons/icon-presence-overdue.svg?v=18" width="28" alt="overdue"/> | Red · overdue (waiting for the session to become idle) |
 
-Hover shows "count · next fire time".
+Hover shows "Next at 15:32 · 3 task(s)"; when overdue it shows "Due · 3 task(s) (sends when the session is idle)".
 
 ---
 
