@@ -11,15 +11,15 @@
     "session",
     "deepseek-ai"
   ],
-  "author": "dsh-later contributors",
+  "author": "WuJiaoJue",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+http://192.168.4.77:3000/dsh-plugins/dsh-later.git"
+    "url": "git+https://github.com/WuJiaoJue/dsh-later.git"
   },
-  "homepage": "http://192.168.4.77:3000/dsh-plugins/dsh-later",
+  "homepage": "https://github.com/WuJiaoJue/dsh-later",
   "bugs": {
-    "url": "http://192.168.4.77:3000/dsh-plugins/dsh-later/issues"
+    "url": "https://github.com/WuJiaoJue/dsh-later/issues"
   },
   "type": "module",
   "main": "lib/index.js",
