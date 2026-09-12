@@ -9,7 +9,7 @@
  * 客户端经 `session.command('/user-schedule-create <json>')` 调用；
  * 返回的 `RemoteResult<{matched}>` 只表达“已受理”，状态以 `userSchedules`
  * 投影回流（commands 框架本身的 admission 语义）。
- * @module dsh-session-scheduler/commands
+ * @module dsh-later/commands
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -33,7 +33,7 @@ export type UserChangeNotifier = (agent: Agent) => void;
  * 用户主动插话回调（GUI「插话发送」按钮触发）。handler 返回 steer 结果；
  * - `{ ok: true, steered: true }` 表示已成功把消息立即推给 in-flight agent；
  * - `{ ok: false, code }` 表示拒绝（未到点 / 不存在 / every 类型暂不支持）。
- * @module dsh-session-scheduler/commands
+ * @module dsh-later/commands
  */
 export type UserSteerHandler = (
   agent: Agent,
@@ -626,7 +626,7 @@ export function registerUserScheduleCommands(
       return ctx.commands.register(definition);
     } catch (error) {
       ctx.logger.warn(
-        `session-scheduler: 命令 ${definition.name} 注册失败: ${
+        `later: 命令 ${definition.name} 注册失败: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

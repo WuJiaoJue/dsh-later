@@ -1,4 +1,4 @@
-export const STYLE_ID = 'dsh-session-scheduler-styles';
+export const STYLE_ID = 'dsh-later-styles';
 
 const COMPONENTS = [
 '/* ==================== 输入行容器 ==================== */',
@@ -415,7 +415,7 @@ export function injectStyles(): () => void {
     return () => undefined;
   }
   const tag = document.createElement('style');
-  tag.dataset.plugin = 'dsh-session-scheduler';
+  tag.dataset.plugin = 'dsh-later';
   tag.dataset.pluginCss = STYLE_ID;
   tag.textContent = COMPONENTS;
   document.head.appendChild(tag);

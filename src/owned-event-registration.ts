@@ -6,7 +6,7 @@
  * 共享模块（如 domain.ts，被 `src/client/index.tsx` 引用）间接引入本模块，
  * esbuild 会尝试把宿主包（依赖 node:path/node:module）打进浏览器产物而失败。
  *
- * @module dsh-session-scheduler/owned-event-registration
+ * @module dsh-later/owned-event-registration
  */
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session';
 import { name, OWNED_EVENT } from './domain.js';

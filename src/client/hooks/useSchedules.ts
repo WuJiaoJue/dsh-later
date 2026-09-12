@@ -9,7 +9,7 @@
  *  - 网络降级：命令失败时暂存 localStorage，网络恢复后自动同步
  *
  * 这样 `SchedButton` 只需负责渲染，逻辑复用（v1.1 跨 session 聚合视图可复用此 hook）。
- * @module dsh-session-scheduler/client/hooks/useSchedules
+ * @module dsh-later/client/hooks/useSchedules
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientSchedule, CreateCommandPayload } from '../types.js';
@@ -218,7 +218,7 @@ export function useSchedules(inject: UseSchedulesInject): UseSchedulesResult {
 function writePendingLocal(pending: readonly PendingSchedule[]): void {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('dsh-session-scheduler:pending', JSON.stringify(pending));
+      localStorage.setItem('dsh-later:pending', JSON.stringify(pending));
     }
   } catch {
     /* 静默降级 */

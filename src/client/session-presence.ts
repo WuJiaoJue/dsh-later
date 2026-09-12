@@ -18,7 +18,7 @@
  * 插在 slot 之后（`.ss-presence-beside`），否则塞进 slot 内（与 orb 同位）。
  * badge 元素带 `.ss-presence` 类，全部状态用 data-state 表达；React 重渲染
  * 移除注入节点时由 MutationObserver 重插。
- * @module dsh-session-scheduler/client/session-presence
+ * @module dsh-later/client/session-presence
  */
 import {
   badgeStateFor,

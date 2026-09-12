@@ -10,7 +10,7 @@
  * 计算在**用户显式选定的 IANA 时区**内进行（不自动推断，确定性优先）。
  * 墙钟→epoch 的解析采用 dsh-schedule `resolveLocalInstant` 同款偏移校正法，
  * 避免依赖进程时区。
- * @module dsh-session-scheduler/smart-window
+ * @module dsh-later/smart-window
  */
 
 /** 智能时段配置（HH:mm 格式，可配置）。 */

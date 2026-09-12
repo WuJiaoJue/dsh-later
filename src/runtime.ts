@@ -13,7 +13,7 @@
  *
  * 触发点：用户 create/delete 成功后 requestDrive；agent 转 idle 时也
  * requestDrive（自愈）；agent 创建时启动。
- * @module dsh-session-scheduler/runtime
+ * @module dsh-later/runtime
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -181,7 +181,7 @@ export class UserScheduleRuntime {
         this.failures += 1;
         const delay = Math.min(1000 * 2 ** Math.min(this.failures - 1, 5), 30_000);
         this.ctx.logger.warn(
-          `session-scheduler: 调度器驱动失败 agent "${this.agent.id}"（${this.failures} 次，${delay}ms 后重试）: 未知异常`,
+          `later: 调度器驱动失败 agent "${this.agent.id}"（${this.failures} 次，${delay}ms 后重试）: 未知异常`,
         );
         this.clearTimer();
         this.arm(Date.now() + delay, Date.now());
@@ -285,7 +285,7 @@ export class UserScheduleRuntime {
       const delivery = claimedState.delivery.get(scheduleId) ?? 'context';
       claimed = { kind: 'one-shot', records: [record], delivery };
     } catch (error) {
-      this.ctx.logger.warn(`session-scheduler: steer fold 失败: ${renderThrown(error)}`);
+      this.ctx.logger.warn(`later: steer fold 失败: ${renderThrown(error)}`);
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
 
@@ -302,7 +302,7 @@ export class UserScheduleRuntime {
       this.agent.steer(message);
       this.agent.session.append('schedule/change', { version: 1, operation: 'dispatch', id: scheduleId });
     } catch (error) {
-      this.ctx.logger.warn(`session-scheduler: steer 失败 agent "${this.agent.id}": ${renderThrown(error)}`);
+      this.ctx.logger.warn(`later: steer 失败 agent "${this.agent.id}": ${renderThrown(error)}`);
       return { ok: false, code: 'internal_error', message: '插话执行失败。' };
     }
     // 同步落盘，确保 fold 路径下次扫描看到 dispatch 标记。
@@ -332,7 +332,7 @@ export class UserScheduleRuntime {
       active = state.folded.active.filter((record) => state.owned.has(record.id));
     } catch (error) {
       this.ctx.logger.warn(
-        `session-scheduler: fold 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
+        `later: fold 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
       );
       return;
     }
@@ -362,7 +362,7 @@ export class UserScheduleRuntime {
           this.agent.followup(message);
         } catch (error) {
           this.ctx.logger.warn(
-            `session-scheduler: framing/followup 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
+            `later: framing/followup 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
           );
           return Promise.resolve(false);
         }
@@ -389,7 +389,7 @@ export class UserScheduleRuntime {
           }
         } catch (error) {
           this.ctx.logger.warn(
-            `session-scheduler: dispatch append 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
+            `later: dispatch append 失败 agent "${this.agent.id}": ${renderThrown(error)}`,
           );
           return Promise.resolve(false);
         }

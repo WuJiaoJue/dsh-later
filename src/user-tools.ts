@@ -14,7 +14,7 @@
  *
  * 所有读改写操作按 agent 串行化（同 dsh-schedule 的 agent-scoped 队列），
  * 保证 id 分配与 fold 不会并发竞争。
- * @module dsh-session-scheduler/user-tools
+ * @module dsh-later/user-tools
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';

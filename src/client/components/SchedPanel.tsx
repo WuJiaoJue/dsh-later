@@ -4,7 +4,7 @@
  * 结构：标题 → 快捷芯片（相对时长 / 固定时刻 / 自定义展开）→ 已设定任务 → 确认。
  * 内容直接取输入框草稿（PRD 本意：发送当前输入内容），无独立 textarea、
  * 无预览块、无时区选择（自动检测）、无静态时段展示。
- * @module dsh-session-scheduler/client/components/SchedPanel
+ * @module dsh-later/client/components/SchedPanel
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';

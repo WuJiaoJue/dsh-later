@@ -13,7 +13,7 @@
  *  - 派生值在 `useMemo` 中按原始快照引用记忆：引用不变 → 派生值稳定。
  *
  * scope 缺失或未就绪时回退内置默认时段。
- * @module dsh-session-scheduler/client/hooks/useSchedulerSettings
+ * @module dsh-later/client/hooks/useSchedulerSettings
  */
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { sanitizeSmartWindowConfig, DEFAULT_SMART_WINDOW, type SmartWindowConfig } from '../../smart-window.js';

@@ -59,7 +59,7 @@ const result = await build({
 
 const body = result.outputFiles[0].text;
 const wrapped = `window.__ModuleLoader__.load({
-	id: "dsh-session-scheduler",
+	id: "dsh-later",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -79,7 +79,7 @@ import { readdirSync, statSync, linkSync, existsSync, rmSync } from "node:fs";
 import { homedir } from 'node:os';
 import { resolve as resolvePath, dirname as parentOf } from 'node:path';
 try {
-  const profileLib = resolvePath(homedir(), '.dsh/profiles/web/node_modules/dsh-session-scheduler/lib');
+  const profileLib = resolvePath(homedir(), '.dsh/profiles/web/node_modules/dsh-later/lib');
   const localLib = resolvePath(process.cwd(), 'lib');
   if (existsSync(profileLib) && profileLib !== localLib) {
     let linked = 0;

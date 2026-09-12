@@ -8,12 +8,12 @@
  *
  * 幂等设计：每个本地任务带 `clientSeq` 去重键，同步成功后才删除；
  * 服务端已存在（投影中可见）的本地副本也会安全清理。
- * @module dsh-session-scheduler/client/local-store
+ * @module dsh-later/client/local-store
  */
 import type { CreateCommandPayload } from './types.js';
 
 /** localStorage key。 */
-const STORAGE_KEY = 'dsh-session-scheduler:pending';
+const STORAGE_KEY = 'dsh-later:pending';
 
 /** 本地暂存任务。 */
 export interface PendingSchedule {

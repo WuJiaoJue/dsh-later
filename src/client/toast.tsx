@@ -8,7 +8,7 @@
  * 为何不用宿主 toast：当前 rc.7 客户端没有对插件的通用通知通道，
  * conversationEvents.register 需要同时提供 target+buildViewNode（会与核心
  * 的 input-message 节点竞争），因此采用投影差异检测 + 自有横幅的最简方案。
- * @module dsh-session-scheduler/client/toast
+ * @module dsh-later/client/toast
  */
 import type { JSX } from 'react';
 import { createRoot } from 'react-dom/client';

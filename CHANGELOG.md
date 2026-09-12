@@ -2,6 +2,23 @@
 
 本文件记录面向使用者的重要变更。细粒度提交历史见 git log。
 
+## 2026-09-12
+
+- **chore!** 插件改名 `dsh-session-scheduler` → **`dsh-later`**：消除与核心
+  引擎 `dsh-schedule` 的命名撞车，贴合 `/later` 用户心智。变更范围：
+  包名、cordis 条目 id（`later`）、settings 命名空间（`dsh-later`）、
+  sidecar 目录（`plugin-state/later/`）、client 端 localStorage key。
+  - sidecar 自动迁移：首次启动把旧目录 `plugin-state/session-scheduler/`
+    的所有权文件搬到新目录（rename 优先，失败逐文件复制，幂等），
+    已设定提醒不丢失。
+  - 升级前已暂存在浏览器 localStorage 的离线任务不再读取（量级通常为
+    0；如需找回，手动把 key `dsh-session-scheduler:pending` 改名为
+    `dsh-later:pending`）。
+  - 历史会话日志中的 `session-scheduler/user-schedule` 事件键与环境变量
+    `DSH_SESSION_SCHEDULER_STATE_DIR` 保持读兼容（后者仍被识别，新名为
+    `DSH_LATER_STATE_DIR`）。
+  - 已装旧版的机器需先 `dsh plugin remove` 旧插件再 add 新版（包名已变）。
+
 ## 2026-09-10
 
 - **fix!** 用户任务所有权移出会话日志，改存插件 sidecar 文件

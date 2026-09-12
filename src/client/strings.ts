@@ -3,7 +3,7 @@
  *
  * 语言解析：`useSchedT(locale)` 读取宿主 locale 服务的 active id（zh/en），
  * 从这里取对应字典；locale 服务缺失或 id 未收录时回退中文（v1 默认语言）。
- * @module dsh-session-scheduler/client/strings
+ * @module dsh-later/client/strings
  */
 
 export type SchedLocaleId = 'zh' | 'en';

@@ -1,6 +1,6 @@
 /**
  * 客户端共享类型：投影输出（snake_case，与 user_schedule_list 一致）。
- * @module dsh-session-scheduler/client/types
+ * @module dsh-later/client/types
  */
 
 /** 一条用户任务（投影 wire 项）。 */
