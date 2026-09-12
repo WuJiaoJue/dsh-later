@@ -6,7 +6,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| **产品代号** | session-scheduler（暂定名：`dsh-session-scheduler`） |
+| **产品代号** | **dsh-later**（原暂定名 session-scheduler，2026-09-12 定名） |
 | **目标版本** | v1.0.0 |
 | **作者** | 待定 |
 | **状态** | 草案 |
@@ -304,7 +304,7 @@ followup() 注入用户角色消息
 ### 5.1 包结构
 
 ```
-dsh-session-scheduler/
+dsh-later/
 ├── index.js              # host 侧：注册用户工具
 ├── client.js             # 浏览器侧：GUI 面板
 ├── cordis.patch.yml      # bundle patch
@@ -325,7 +325,7 @@ dsh-session-scheduler/
 ### 5.2 依赖关系
 
 ```
-dsh-session-scheduler
+dsh-later
     │
     ├── @deepseek-ai/cordis (peer)
     ├── @deepseek-ai/dsh-schedule (peer) ← 复用底层引擎

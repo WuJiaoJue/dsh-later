@@ -87,7 +87,7 @@
 
 如果需要恢复原来的 logo，只需将 README 文件中的 logo 引用改回：
 ```html
-<img src="docs/logo.png?v=2" width="128" alt="dsh-session-scheduler logo"/>
+<img src="docs/logo.png?v=2" width="128" alt="dsh-later logo"/>
 ```
 
 ---

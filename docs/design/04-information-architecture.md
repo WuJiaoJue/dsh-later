@@ -5,7 +5,7 @@
 ## 1. 整体架构
 
 ```
-session-scheduler/
+later/
 ├── Host 侧（服务端）
 │   ├── user_schedule_create    ← 创建工具
 │   ├── user_schedule_list      ← 列表工具
@@ -141,7 +141,7 @@ React 状态更新 → UI 重渲染
 ## 6. 依赖关系
 
 ```
-session-scheduler
+later
     │
     ├── @deepseek-ai/cordis (peer)           ← 框架
     ├── @deepseek-ai/dsh-schedule (peer)     ← 底层引擎
