@@ -14,7 +14,9 @@
 
 **`/later` 延迟发送** —— 不开面板，在输入框敲一行就以你的身份稍后发出（演示：逐字输入 `/later +5s` / `+3m` / `+1h20m`，回车后进入倒计时；`+5s` 那条到点真实送达）：
 
+<p align="center">
 <img src="docs/media/docs-later-full.gif" width="760" alt="/later 命令演示：输入 /later +5s 检查部署结果 → 回车 → dock 倒计时 → 到点以你的身份送达"/>
+</p>
 
 ---
 
