@@ -1,6 +1,6 @@
 # dsh-sleep-send 深度源码分析
 
-> 本文件分析 `dsh-sleep-send` 的实现，作为 session-scheduler 插件的 GUI 参考。
+> 本文件分析 `dsh-sleep-send` 的实现，作为 later 插件的 GUI 参考。
 
 ---
 

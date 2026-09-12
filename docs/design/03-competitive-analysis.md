@@ -1,6 +1,6 @@
 # 竞品深度分析
 
-> 本文件分析 DSH 生态中所有与"定时任务"相关的插件，作为 session-scheduler 的设计参考。
+> 本文件分析 DSH 生态中所有与"定时任务"相关的插件，作为 later 的设计参考。
 
 ---
 
@@ -137,7 +137,7 @@
 
 ## 4. 本插件的差异化定位
 
-| 维度 | dsh-schedule | dsh-sleep-send | **session-scheduler** |
+| 维度 | dsh-schedule | dsh-sleep-send | **later** |
 |---|---|---|---|
 | **存储位置** | Session 日志 | localStorage | Session 日志 |
 | **触发引擎** | 服务端 runMaintenance | 浏览器端轮询 | 服务端 runMaintenance |

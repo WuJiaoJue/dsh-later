@@ -75,7 +75,7 @@
 
 1. 恢复 `README.md` 和 `README.en.md` 中的 logo 引用：
    ```html
-   <img src="docs/logo.png?v=2" width="128" alt="dsh-session-scheduler logo"/>
+   <img src="docs/logo.png?v=2" width="128" alt="dsh-later logo"/>
    ```
 
 2. 可以保留新的像素时钟 logo 文件作为备选方案

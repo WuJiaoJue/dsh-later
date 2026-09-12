@@ -24,7 +24,7 @@
 │                            │ peer dependency                 │
 │                            ▼                                │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │            dsh-session-scheduler (本插件)              │   │
+│  │            dsh-later (本插件)              │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐ │   │
 │  │  │ user_       │  │ user_       │  │ user_        │ │   │
 │  │  │ schedule_   │  │ schedule_   │  │ schedule_    │ │   │
@@ -65,7 +65,7 @@
 ## 2. 包结构
 
 ```
-dsh-session-scheduler/
+dsh-later/
 ├── index.js                    # Host 侧入口（注册用户工具）
 ├── client.js                   # 浏览器侧入口（GUI 面板）
 ├── cordis.patch.yml            # Cordis bundle patch
@@ -114,7 +114,7 @@ dsh-session-scheduler/
 
 ```json
 {
-  "name": "dsh-session-scheduler",
+  "name": "dsh-later",
   "version": "1.0.0",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -138,7 +138,7 @@ dsh-session-scheduler/
 3. ctx.tools            ← 工具注册
 4. ctx.sessionPersistence ← 持久化
 5. dsh-schedule         ← 底层引擎（先加载）
-6. dsh-session-scheduler ← 本插件（后加载，依赖 dsh-schedule）
+6. dsh-later ← 本插件（后加载，依赖 dsh-schedule）
 ```
 
 ---
@@ -156,7 +156,7 @@ import {
   userScheduleDelete 
 } from './lib/user-tools.js';
 
-export const name = 'dsh-session-scheduler';
+export const name = 'dsh-later';
 export const inject = ['schedule'];  // 依赖 dsh-schedule
 
 export function apply(ctx) {

@@ -7,7 +7,7 @@
 ## 快速导航
 
 ```
-scheduler-plugin/                        ← 仓库根（gitea: dsh-plugins/dsh-session-scheduler）
+scheduler-plugin/                        ← 仓库根（gitea: dsh-plugins/dsh-later）
 ├── README.md                            ← 本文档（总览 + 参考链接）
 ├── prd.md                               ← PRD 单文件版（保留归档）
 ├── docs/
@@ -35,7 +35,7 @@ scheduler-plugin/                        ← 仓库根（gitea: dsh-plugins/dsh-
 ├── references/                          ← 依赖源码分析
 │   ├── dsh-schedule-analysis.md         ← dsh-schedule 源码分析
 │   └── dsh-sleep-send-analysis.md       ← dsh-sleep-send 源码分析
-└── dsh-session-scheduler/               ← 插件包（安装、配置、架构与验收见其 README.md）
+└── dsh-later/               ← 插件包（安装、配置、架构与验收见其 README.md）
 ```
 
 ---
@@ -160,7 +160,7 @@ dsh-schedule（已有）
                         │
                         ↑ 完全复用
                         │
-session-scheduler（新增）
+later（新增）
     │
     ├── 用户工具：user_schedule_create / user_schedule_list / user_schedule_delete
     ├── GUI 面板：输入框右侧 ⏰ 按钮
@@ -254,13 +254,13 @@ session-scheduler（新增）
 
 ### v1.0.0（MVP）
 
-- [x] `user_schedule_create/list/delete` 工具（`dsh-session-scheduler/`）
+- [x] `user_schedule_create/list/delete` 工具（`dsh-later/`）
 - [x] GUI 面板（智能时段 + 自定义时间）
 - [x] 工具行芯片（倒计时 + 任务数）
 - [x] 关网页恢复（事件日志 + 投影冷恢复）
 - [ ] 防覆盖逻辑（草稿变更自动取消）→ 有意取舍：`followup` 注入固化内容，不静默取消
 
-> v1.0.0 实现状态与取舍见 [`dsh-session-scheduler/README.md`](dsh-session-scheduler/README.md)。
+> v1.0.0 实现状态与取舍见 [`dsh-later/README.md`](dsh-later/README.md)。
 
 ### v1.1.0（增强）
 

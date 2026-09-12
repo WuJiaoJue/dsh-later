@@ -27,7 +27,7 @@ dsh-session 的持久化读路径在加载历史时逐条校验事件类型：�
 **决策**：所有权 + 投递形态（`/later` 的 `delivery:'user'`）**不再写入会话日志**，
 改存插件自己的 sidecar 文件：
 
-- 路径：`<DSH_HOME>/plugin-state/session-scheduler/<sessionId>.json`
+- 路径：`<DSH_HOME>/plugin-state/later/<sessionId>.json`（2026-09-12 随插件改名自旧目录迁移）
   （解析优先级 `DSH_SESSION_SCHEDULER_STATE_DIR` > `$DSH_HOME` > `~/.dsh`；
   见 `ownership-store.ts`）。
 - 原子写（tmp + rename）；损坏文件改名保留（`.corrupt-<ts>`）后按空表继续；

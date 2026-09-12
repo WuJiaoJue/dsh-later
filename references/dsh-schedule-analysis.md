@@ -1,6 +1,6 @@
 # dsh-schedule 深度源码分析
 
-> 本文件分析 `dsh-schedule` 的实现，作为 session-scheduler 插件的设计参考。
+> 本文件分析 `dsh-schedule` 的实现，作为 later 插件的设计参考。
 
 ---
 

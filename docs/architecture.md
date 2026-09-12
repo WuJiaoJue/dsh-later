@@ -9,7 +9,7 @@ DSH Host
 ├── dsh-schedule            ← 底层引擎：事件溯源 / dispatch / followup（peer 依赖，先加载）
 │       │
 │       ▼
-└── dsh-session-scheduler   ← 本插件（用户接口层）
+└── dsh-later   ← 本插件（用户接口层）
     ├── 用户工具 user_schedule_*          → 写 schedule/change（完全兼容）
     │                                        + 伴生 ownership 事件（标记用户来源）
     ├── slash 命令（client→host 变更通道）  → 复用同一套 user-tools 逻辑
@@ -46,7 +46,7 @@ dsh-schedule 的 runtime 只在三类时机重驱：agent 创建、**其自身�
 ## 目录结构
 
 ```
-dsh-session-scheduler/
+dsh-later/
 ├── src/
 │   ├── index.ts              # 宿主入口：用户工具 + 命令 + 投影 + 调度器装配
 │   ├── domain.ts             # 事件/投影类型 + SessionEventMap/ProjectionMap/StateMap 扩展
