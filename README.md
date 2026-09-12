@@ -137,7 +137,14 @@
 
 ### 安装到 DSH
 
-在插件源码目录构建后装入 DSH Web profile：
+**npm 安装（推荐，预构建产物，无需授权）：**
+
+```sh
+dsh plugin --profile web add dsh-later
+# 重启 dsh web 后生效
+```
+
+或者从源码构建后装入 DSH Web profile：
 
 ```sh
 cd dsh-later

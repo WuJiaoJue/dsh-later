@@ -137,7 +137,14 @@ Hover shows "Next at 15:32 · 3 task(s)"; when overdue it shows "Due · 3 task(s
 
 ### Install into DSH
 
-Build in the plugin source directory, then add it to your DSH Web profile:
+**From npm (recommended — prebuilt, no approval needed):**
+
+```sh
+dsh plugin --profile web add dsh-later
+# restart dsh web to activate
+```
+
+Or build from source and add it to your DSH Web profile:
 
 ```sh
 cd dsh-later
