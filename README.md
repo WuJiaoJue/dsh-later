@@ -119,11 +119,11 @@ dsh plugin --profile web add "file:/path/to/dsh-later"
 
 有活动提醒的会话，行内会出现像素时钟（与「进行中」orb 并存）：
 
-| 颜色 | 含义 |
+| 图标 | 含义 |
 |---|---|
-| 紫 | 有定时中提醒 |
-| 琥珀 | 下次触发 ≤ 5 分钟 |
-| 红 | 已到期（等待会话空闲派发） |
+| <img src="assets/icons/icon-presence-scheduled.svg?v=18" width="28" alt="scheduled"/> | 紫 · 有定时中提醒 |
+| <img src="assets/icons/icon-presence-urgent.svg?v=18" width="28" alt="urgent"/> | 琥珀 · 下次触发 ≤ 5 分钟 |
+| <img src="assets/icons/icon-presence-overdue.svg?v=18" width="28" alt="overdue"/> | 红 · 已到期（等待会话空闲派发） |
 
 鼠标悬停可见「任务数 · 下次时间」。
 
@@ -175,8 +175,6 @@ MIT
 ---
 
 <div align="center">
-
-**侧栏定时状态标识** · 定时中 · 紧急（≤ 5 分钟）· 已到期
 
 <img src="assets/icons/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
 <img src="assets/icons/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>

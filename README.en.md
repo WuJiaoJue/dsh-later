@@ -119,11 +119,11 @@ The model can also call user tools on your behalf to create/inspect/delete/edit 
 
 Conversations with active reminders show a pixel clock in their sidebar row (alongside the "active" orb):
 
-| Color | Meaning |
+| Icon | Meaning |
 |---|---|
-| Purple | Has scheduled reminders |
-| Amber | Next fire within 5 minutes |
-| Red | Overdue (waiting for the session to become idle) |
+| <img src="assets/icons/icon-presence-scheduled.svg?v=18" width="28" alt="scheduled"/> | Purple · has scheduled reminders |
+| <img src="assets/icons/icon-presence-urgent.svg?v=18" width="28" alt="urgent"/> | Amber · next fire within 5 minutes |
+| <img src="assets/icons/icon-presence-overdue.svg?v=18" width="28" alt="overdue"/> | Red · overdue (waiting for the session to become idle) |
 
 Hover shows "count · next fire time".
 
@@ -175,8 +175,6 @@ MIT
 ---
 
 <div align="center">
-
-**Sidebar presence indicator** · scheduled · urgent (≤ 5 min) · overdue
 
 <img src="assets/icons/icon-presence-scheduled.svg?v=18" width="48" alt="scheduled"/>
 <img src="assets/icons/icon-presence-urgent.svg?v=18" width="48" alt="urgent"/>
