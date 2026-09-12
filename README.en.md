@@ -10,9 +10,11 @@
 
 </div>
 
-> Set reminders for yourself inside DSH: when the time comes, a message lands in **this same conversation** — even if you have closed the browser.
+> Set reminders for yourself inside DSH: **set by you, delivered into the current conversation, driven server-side, available across devices** — on time, even with the browser closed.
 
-Existing DSH scheduling options each miss a piece: the built-in scheduler is exposed only to the model (users cannot operate it directly); sleep-send lives in the browser and dies when the page closes; Host Automations always create *new* sessions. This plugin fills the gap: **set by you, delivered into the current conversation, driven server-side, available across devices**.
+**`/later` delayed send** — no panel needed: type one line in the input box and it is sent later as yourself (demo: typing `/later +5s`, `+3m`, `+1h20m` character by character, then Enter to start the countdowns; the `+5s` one really lands when due):
+
+<img src="docs/media/docs-later-full.gif" width="760" alt="/later demo: type /later +5s 检查部署结果 → Enter → dock countdown → delivered as yourself when due"/>
 
 ---
 
