@@ -11,15 +11,15 @@
     "session",
     "deepseek-ai"
   ],
-  "author": "dsh-session-scheduler contributors",
+  "author": "dsh-later contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+http://192.168.4.77:3000/dsh-plugins/dsh-session-scheduler.git"
+    "url": "git+http://192.168.4.77:3000/dsh-plugins/dsh-later.git"
   },
-  "homepage": "http://192.168.4.77:3000/dsh-plugins/dsh-session-scheduler",
+  "homepage": "http://192.168.4.77:3000/dsh-plugins/dsh-later",
   "bugs": {
-    "url": "http://192.168.4.77:3000/dsh-plugins/dsh-session-scheduler/issues"
+    "url": "http://192.168.4.77:3000/dsh-plugins/dsh-later/issues"
   },
   "type": "module",
   "main": "lib/index.js",
