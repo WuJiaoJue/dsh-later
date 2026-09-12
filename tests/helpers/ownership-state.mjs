@@ -12,7 +12,7 @@ import { recordOwnership, resetCacheForTests } from '../../lib/ownership-store.j
 /** 新建一次性状态目录并让插件指向它；返回目录路径。 */
 export function freshOwnershipDir() {
   const dir = mkdtempSync(join(tmpdir(), 'sched-ownership-'));
-  process.env.DSH_SESSION_SCHEDULER_STATE_DIR = dir;
+  process.env.DSH_LATER_STATE_DIR = dir;
   resetCacheForTests();
   return dir;
 }

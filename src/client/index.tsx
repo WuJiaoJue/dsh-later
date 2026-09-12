@@ -1,5 +1,5 @@
 /**
- * dsh-session-scheduler client 端：会话输入框右侧的「定时提醒」按钮 + 面板。
+ * dsh-later client 端：会话输入框右侧的「定时提醒」按钮 + 面板。
  *
  * 数据流：
  *  - 读状态：`useProjection('userSchedules')`（宿主会话投影实时推送）。
@@ -16,7 +16,7 @@
  * `settingsScope`/`locale` 的最小契约，避免引入 `@deepseek-ai/dsh-client-*`
  * 这一族浏览器运行时包作为 NPM 依赖（它们是宿主注入产物，pnpm 解析预发布版
  * 会带来 hoisting/range 噪音）。
- * @module dsh-session-scheduler/client
+ * @module dsh-later/client
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { name } from '../domain.js';
@@ -36,10 +36,10 @@ const INPUT_RIGHT_SLOT = 'conversation.input.right';
 const inject = ['slots', 'sessions', 'conversation', 'settingsScope', 'locale'];
 
 /** Locale 字典命名空间（locale 命名空间允许点分）。 */
-const NS = 'settings.plugins.session-scheduler';
+const NS = 'settings.plugins.later';
 
-/** Settings 命名空间（必须与 host 端注册的字符串一致：dsh-session-scheduler）。 */
-const SETTINGS_NS = 'dsh-session-scheduler';
+/** Settings 命名空间（必须与 host 端注册的字符串一致：dsh-later）。 */
+const SETTINGS_NS = 'dsh-later';
 
 /**
  * 浏览器插件主体。
@@ -57,9 +57,9 @@ function apply(ctx: Context): void {
   if (slots === undefined || sessions === undefined) return;
 
   // 样式注入（卸载清理）。
-  ctx.effect(() => injectStyles(), 'dsh-session-scheduler: styles');
+  ctx.effect(() => injectStyles(), 'dsh-later: styles');
   // 提醒到达 toast 宿主（幂等；随插件生命周期卸载）。
-  ctx.effect(() => mountReminderToastHost(), 'dsh-session-scheduler: toast host');
+  ctx.effect(() => mountReminderToastHost(), 'dsh-later: toast host');
   // 侧栏会话行「定时状态」badge（docs/ui/09 路线 B）：数据源为 sessions.list
   // 的行级 projectionValues（session.list 基线覆盖全会话，当前会话由投影帧
   // 实时推进），周期 refresh() 读 RPC 补时效。服务缺失时静默跳过。
@@ -69,7 +69,7 @@ function apply(ctx: Context): void {
         sessions: sessions as unknown as PresenceSessionsLike,
         ...(locale === undefined ? {} : { locale: locale as unknown as PresenceLocaleLike }),
       }),
-    'dsh-session-scheduler: presence',
+    'dsh-later: presence',
   );
 
   // 注册 locale 字典
@@ -135,7 +135,7 @@ function apply(ctx: Context): void {
         loading: 'Loading…',
         unavailable: 'Settings unavailable.',
       },
-    }), 'dsh-session-scheduler: locale');
+    }), 'dsh-later: locale');
   }
 
   /** 执行一条 slash 命令（解析会话 face → command()）。 */
@@ -161,7 +161,7 @@ function apply(ctx: Context): void {
       ctx.slots.register(
         {
           name: INPUT_RIGHT_SLOT,
-          id: 'session-scheduler',
+          id: 'later',
           order: 50,
           inject: () => ({ callCommand, locale, schedulerScope } as SchedButtonInjected),
         },
@@ -176,7 +176,7 @@ function apply(ctx: Context): void {
       ctx.slots.register(
         {
           name: 'conversation.input.dock',
-          id: 'session-scheduler-dock',
+          id: 'later-dock',
           order: 30,
           inject: () => ({ callCommand, locale } as ScheduleDockInjected),
         },

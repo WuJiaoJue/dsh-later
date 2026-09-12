@@ -9,7 +9,7 @@
  * 跨会话的任务概要，**无需宿主新增任何数据通道**。
  *
  * 本模块不触碰 DOM / React，全部函数可在 node --test 下运行。
- * @module dsh-session-scheduler/presence
+ * @module dsh-later/presence
  */
 
 /** badge 状态：正常排期 / 紧急（≤5min）/ 到期未派发（瞬时，等会话空闲）。 */

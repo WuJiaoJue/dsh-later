@@ -3,7 +3,7 @@
  * 注册在 `conversation.input.right` 插槽（order 50）。
  *
  * 逻辑已抽取到 `useSchedules` hook；本组件只负责渲染。
- * @module dsh-session-scheduler/client/components/SchedButton
+ * @module dsh-later/client/components/SchedButton
  */
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';

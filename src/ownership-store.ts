@@ -7,18 +7,33 @@
  * 永久 seq 缺口，任何读方（含格式迁移）都会拒读整份历史。根治 = 所有权
  * 完全移出会话日志，存到插件自己的 sidecar 文件：
  *
- *   <DSH_HOME>/plugin-state/session-scheduler/<sessionId>.json
+ *   <DSH_HOME>/plugin-state/later/<sessionId>.json
+ *
+ * 改名迁移：插件旧名 `session-scheduler` 的 sidecar 目录在首次启动时自动
+ * 迁移（整个目录 rename；rename 失败则逐文件复制）。不写「一次性迁移
+ * 标记」——重复执行天然幂等，且不引入新的丢失路径。
  *
  * - 原子写：临时文件 + rename；
  * - 容错读：JSON 损坏时把坏文件改名保留（.corrupt-<ts>），按空表继续；
  * - 进程内缓存：按 (mtimeMs, size) 校验，避免热路径反复读盘；
- * - 路径解析：`DSH_SESSION_SCHEDULER_STATE_DIR`（测试/便携）>
- *   `$DSH_HOME` > `~/.dsh`（与 dsh-home-paths 的默认解析一致）。
+ * - 路径解析：`DSH_LATER_STATE_DIR`（测试/便携）> 旧名
+ *   `DSH_LATER_STATE_DIR`（升级过渡）> `$DSH_HOME` > `~/.dsh`
+ *   （与 dsh-home-paths 的默认解析一致）。
  *
  * 注意：本模块只被 host 端引用；client bundle 不得引入（依赖 node:fs）。
- * @module dsh-session-scheduler/ownership-store
+ * @module dsh-later/ownership-store
  */
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  readdirSync,
+  copyFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { UserScheduleDelivery } from './domain.js';
@@ -40,12 +55,50 @@ interface OwnershipFile {
 
 /** 解析状态目录（优先级见模块注释）。 */
 function resolveStateDir(): string {
-  const override = process.env['DSH_SESSION_SCHEDULER_STATE_DIR'];
+  const override = process.env['DSH_LATER_STATE_DIR'] ?? process.env['DSH_LATER_STATE_DIR'];
   if (override !== undefined && override.trim().length > 0) return override;
   const dshHomeEnv = process.env['DSH_HOME'];
   const home =
     dshHomeEnv !== undefined && dshHomeEnv.trim().length > 0 ? dshHomeEnv : join(homedir(), '.dsh');
+  return join(home, 'plugin-state', 'later');
+}
+
+/**
+ * 旧名 sidecar 目录（仅 `$DSH_HOME` 路径下存在；env 覆盖视为测试/便携场景，
+ * 不做迁移以免污染调用方给定的目录语义）。
+ */
+function legacyStateDir(): string | undefined {
+  const override = process.env['DSH_LATER_STATE_DIR'] ?? process.env['DSH_LATER_STATE_DIR'];
+  if (override !== undefined && override.trim().length > 0) return undefined;
+  const dshHomeEnv = process.env['DSH_HOME'];
+  const home =
+    dshHomeEnv !== undefined && dshHomeEnv.trim().length > 0 ? dshHomeEnv : join(homedir(), '.dsh');
   return join(home, 'plugin-state', 'session-scheduler');
+}
+
+/** 把旧名目录的 sidecar 文件搬到新目录（目录 rename 优先，失败逐文件复制；幂等）。 */
+function migrateLegacyState(newDir: string): void {
+  const oldDir = legacyStateDir();
+  if (oldDir === undefined || !existsSync(oldDir)) return;
+  try {
+    renameSync(oldDir, newDir);
+    return;
+  } catch {
+    /* 目标已存在等：退化为逐文件复制 */
+  }
+  try {
+    for (const entry of readdirSync(oldDir)) {
+      if (!entry.endsWith('.json')) continue;
+      const target = join(newDir, entry);
+      if (!existsSync(target)) copyFileSync(join(oldDir, entry), target);
+    }
+  } catch (error) {
+    console.warn(
+      `[dsh-later] 旧 sidecar 目录迁移失败（旧目录保留，可手动搬移）: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 let cachedDir: string | undefined;
@@ -56,6 +109,7 @@ function stateDir(): string {
     cachedDir = resolveStateDir();
     try {
       mkdirSync(cachedDir, { recursive: true });
+      migrateLegacyState(cachedDir);
     } catch {
       /* 读写时再报错 */
     }
@@ -120,7 +174,7 @@ function readFresh(sessionId: string): OwnershipFile {
     try {
       // eslint 由库外保证；这里用 console 而非宿主 logger（本层无 ctx 依赖）。
       console.warn(
-        `[dsh-session-scheduler] 所有权 sidecar 解析失败，已按空表继续: ${
+        `[dsh-later] 所有权 sidecar 解析失败，已按空表继续: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

@@ -16,7 +16,7 @@ const result = await build({
 
 const body = result.outputFiles[0].text;
 const wrapped = `window.__ModuleLoader__.load({
-	id: "dsh-session-scheduler",
+	id: "dsh-later",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;

@@ -1,6 +1,6 @@
 /**
  * 倒计时工厂 hook：以给定间隔重渲染，供倒计时文本与紧急度判断使用。
- * @module dsh-session-scheduler/client/useCountdown
+ * @module dsh-later/client/useCountdown
  */
 import { useEffect, useRef, useState } from 'react';
 

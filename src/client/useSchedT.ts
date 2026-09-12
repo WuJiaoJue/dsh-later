@@ -5,7 +5,7 @@
  * 服务（getSnapshot/subscribe，LocaleFace 形状）；本 hook 以
  * `useSyncExternalStore` 订阅其 active locale，语言切换时触发重渲染。
  * locale 服务缺失（旧宿主组合）时回退中文，行为与 v1 一致。
- * @module dsh-session-scheduler/client/useSchedT
+ * @module dsh-later/client/useSchedT
  */
 import { useCallback, useSyncExternalStore } from 'react';
 import { dictFor, type SchedLocaleId, type SchedStrings } from './strings.js';

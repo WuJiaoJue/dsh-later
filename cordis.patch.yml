@@ -1,4 +1,4 @@
-# dsh-session-scheduler bundle patch：把 host 插件行插入 loader 树。
+# dsh-later bundle patch：把 host 插件行插入 loader 树。
 # 作为 dsh.bundle.patch 自动挂载（dsh plugin add 后即生效）；
 # client 端通过 package.json 的 dsh.client 声明进入 boot 图。
 #
@@ -7,8 +7,8 @@
 #     晚间 18:00–22:00、夜间静默）。
 #   - max-schedules：单 session 任务上限（默认 100）。
 - insert:
-  - id: session-scheduler
-    name: dsh-session-scheduler
+  - id: later
+    name: dsh-later
     # config:            # ← 需要时取消注释
     #   maxSchedules: 100
     #   smartWindow:

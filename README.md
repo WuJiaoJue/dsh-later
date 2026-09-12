@@ -4,7 +4,7 @@
 <img src="assets/icons/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
 <img src="assets/icons/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
-# dsh-session-scheduler — 会话内定时消息插件
+# dsh-later — 会话内定时消息插件
 
 **中文** | [English](./README.en.md)
 
@@ -74,11 +74,11 @@ DSH 现有定时能力各缺一角：内置定时只暴露给模型、用户无�
 在插件源码目录构建后装入 DSH Web profile：
 
 ```sh
-cd dsh-session-scheduler
+cd dsh-later
 npm install
 npm run build
 
-dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
+dsh plugin --profile web add "file:/path/to/dsh-later"
 # 重启 dsh web 后生效
 ```
 

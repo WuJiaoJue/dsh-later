@@ -11,7 +11,7 @@
  * 重置自身状态（清空 owned/active），因此子会话不继承父会话的提醒（AC-07）。
  *
  * 注意 `apply` 为增量 fold：无关事件必须返回同一状态引用，否则会误触发推送。
- * @module dsh-session-scheduler/projection
+ * @module dsh-later/projection
  */
 import { z } from 'zod';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';

@@ -1,5 +1,5 @@
 /**
- * dsh-session-scheduler 宿主入口。
+ * dsh-later 宿主入口。
  *
  * 挂载职责：
  *  1. 注册 `userSchedules` 会话投影（GUI 读取任务列表的权威状态）；
@@ -9,7 +9,7 @@
  *
  * 依赖顺序：作为 peer 依赖的 dsh-schedule 需先加载（其 agent-runtime 负责
  * 到期 dispatch + followup 注入；本插件只负责「用户接口层」）。
- * @module dsh-session-scheduler
+ * @module dsh-later
  */
 import type { Context } from '@deepseek-ai/cordis';
 import s from '@deepseek-ai/schemastery';
@@ -226,7 +226,7 @@ function registerUserScheduleTools(
     };
   } catch (error) {
     dispose();
-    rootCtx.logger.warn(`session-scheduler: user tools 注册失败: ${error instanceof Error ? error.message : String(error)}`);
+    rootCtx.logger.warn(`later: user tools 注册失败: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -280,7 +280,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   ctx.inject(['settings'], (settingsCtx) => {
     const scope = settingsCtx.settings.register(
       // 断言而非 settingsNamespace()：0.1.1 要求 branded 类型，0.1.2 已删除该 helper。
-      'dsh-session-scheduler' as SettingsNamespace,
+      'dsh-later' as SettingsNamespace,
       SchedulerSettingsSchema,
       { applies: 'live' },
     );
@@ -337,7 +337,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   // 2. slash 命令（客户端变更通道），全局注册一次。
   ctx.effect(
     () => registerUserScheduleCommands(ctx, getSettings, notifyUserChange, notifyUserSteer),
-    'session-scheduler.commands()',
+    'later.commands()',
   );
 
   // 3. 每个 root agent：注册用户工具 + 用户调度器生命周期。
@@ -363,11 +363,11 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
               if (runtimes.get(agent) === runtime) runtimes.delete(agent);
             }
           };
-        }, 'session-scheduler.userTools()');
+        }, 'later.userTools()');
         runtimes.set(agent, runtime);
       } catch (error) {
         ctx.logger.warn(
-          `session-scheduler: agent "${agent.id}" 用户工具/调度器挂载失败: ${
+          `later: agent "${agent.id}" 用户工具/调度器挂载失败: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -380,7 +380,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
       runtimes.clear();
       await Promise.allSettled(runtimesToDispose.map((runtime) => runtime.dispose()));
     };
-  }, 'session-scheduler.userToolsLifecycle()');
+  }, 'later.userToolsLifecycle()');
 }
 
 export { name };

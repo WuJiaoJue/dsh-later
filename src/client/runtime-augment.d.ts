@@ -12,7 +12,7 @@
  * 但仅暴露本插件调用的成员。所有缺失字段随宿主升级动态补齐，本文件不会被
  * 这些字段的存在与否所约束。
  *
- * @module dsh-session-scheduler/client/runtime-augment
+ * @module dsh-later/client/runtime-augment
  */
 import type { ComponentType, ReactNode } from 'react';
 import type { Context } from '@deepseek-ai/cordis';

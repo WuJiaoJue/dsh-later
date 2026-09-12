@@ -4,7 +4,7 @@
 <img src="assets/icons/icon-presence-urgent.svg?v=18" width="64" alt="urgent"/>
 <img src="assets/icons/icon-presence-overdue.svg?v=18" width="64" alt="overdue"/>
 
-# dsh-session-scheduler — In-Session Scheduled Message Plugin
+# dsh-later — In-Session Scheduled Message Plugin
 
 [中文](./README.md) | **English**
 
@@ -74,11 +74,11 @@ Existing DSH scheduling options each miss a piece: the built-in scheduler is exp
 Build in the plugin source directory, then add it to your DSH Web profile:
 
 ```sh
-cd dsh-session-scheduler
+cd dsh-later
 npm install
 npm run build
 
-dsh plugin --profile web add "file:/path/to/dsh-session-scheduler"
+dsh plugin --profile web add "file:/path/to/dsh-later"
 # restart dsh web to activate
 ```
 

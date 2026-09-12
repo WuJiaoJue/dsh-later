@@ -1,7 +1,7 @@
 /**
  * 时间格式化与通用工具（纯函数，host 与 client 共享）。
  * 文案遵循 docs/ui/08-microcopy.md 的微文案规范。
- * @module dsh-session-scheduler/time-utils
+ * @module dsh-later/time-utils
  */
 
 /** 校验一个字符串是否为合法 IANA 时区（或 UTC）。 */

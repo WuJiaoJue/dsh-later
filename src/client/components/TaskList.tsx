@@ -1,7 +1,7 @@
 /**
  * 任务列表：面板内显示已设定任务（PRD §3.2.2 / docs/ui 01 §4）。
  * 状态点：scheduled 蓝、overdue 橙闪、delivered 绿、cancelled 灰删线。
- * @module dsh-session-scheduler/client/components/TaskList
+ * @module dsh-later/client/components/TaskList
  */
 import type { JSX } from 'react';
 import { formatAbsolute, formatRelative, type TextLocale } from '../../time-utils.js';

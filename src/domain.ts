@@ -1,5 +1,5 @@
 /**
- * dsh-session-scheduler 领域类型与事件荷载。
+ * dsh-later 领域类型与事件荷载。
  *
  * 兼容性说明（关键设计决策）：
  * dsh-schedule 对 `schedule/change` 荷载采用严格解码（`hasExactKeys` 拒绝任何
@@ -11,19 +11,23 @@
  * 现改为 sidecar 文件（见 ownership-store.ts）；该事件类型仅作**读兼容**
  * 保留（旧日志可能仍含此事件，注册 + fold 逻辑不再写入）。
  *
- * @module dsh-session-scheduler/domain
+ * @module dsh-later/domain
  */
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-session-projection/types';
 
 /** 插件名（与 cordis 条目 id / manifest 一致）。 */
-export const name = 'dsh-session-scheduler';
+export const name = 'dsh-later';
 
 /** 会话投影键：GUI 通过 `useProjection` / `faceOf` 读取用户任务列表。 */
 export const PROJECTION_KEY = 'userSchedules';
 
-/** 伴生所有权事件类型（**历史遗留，仅读兼容**；新写入一律走 ownership-store）。 */
+/**
+ * 伴生所有权事件类型（**历史遗留，仅读兼容**；新写入一律走 ownership-store）。
+ * 字面量保留旧名 `session-scheduler/user-schedule`：它是历史会话日志里的
+ * 数据键，改名不追溯——读方必须继续认它。
+ */
 export const OWNED_EVENT = 'session-scheduler/user-schedule';
 
 /**

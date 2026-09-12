@@ -7,7 +7,7 @@
  *  - 单条：直接显示 内容 + 时间 + 单独取消/修改
  *  - 多条：折叠为「数量 header + 下一条预览」，点击展开列表（max-height 180px）
  *  - 每条可单独取消；可点击编辑图标进入行内修改内容（保留原时刻）
- * @module dsh-session-scheduler/client/components/ScheduleDock
+ * @module dsh-later/client/components/ScheduleDock
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
