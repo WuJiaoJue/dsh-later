@@ -113,7 +113,8 @@
   .ss-hover-status-dot::after {
     content: ""; position: absolute; border-radius: 50%; background: currentColor;
   }
-  .ss-hover-status-dot::before { inset: 0; }
+  /* 关键：::before 是 10% 透明度的光晕，不是实心外环 */
+  .ss-hover-status-dot::before { inset: 0; opacity: 0.1; }
   .ss-hover-status-dot::after  { inset: 2px; }
   /* 语义映射对齐宿主 done/ongoing/warning/error */
   .ss-hover-status[data-state="urgent"]  .ss-hover-status-dot { color: var(--state-warning); }
@@ -330,10 +331,14 @@
   <h2>6 · 与宿主的一致性 &amp; 已知限制</h2>
   <div class="note">
     <b>状态点已与宿主严格同构。</b>实测宿主 StateDot 为「<code>10×10</code> relative +
-    <code>::before 10px/inset:0</code> + <code>::after 6px/inset:2px</code>」双层同色结构；
-    本插件按下述同样的写法自绘，<b>未复用</b>宿主的构建期 hash 类名（<code>_dot_xxxxxx_n</code>
-    不稳定，宿主升级会静默失效）。并排像素比对：<code>scheduled</code> 态与宿主「空闲」行的
-    span 宽度、中心色 <code>rgb(173,178,184)</code> <b>逐字段相等</b>。
+    <code>::before 10px/inset:0/opacity:0.1</code> + <code>::after 6px/inset:2px</code>」双层结构。
+    <b>关键：<code>::before</code> 是 10% 透明度的光晕，不是实心外环</b>；<code>::after</code>
+    才是 6px 实心核心。若漏掉 <code>opacity: 0.1</code>，<code>::before</code> 会盖住核心，
+    渲染成 10px 实心圆（明显偏大偏实——这是本项目踩过的坑）。
+    本插件按同样的写法自绘，<b>未复用</b>宿主的构建期 hash 类名（<code>_dot_xxxxxx_n</code>
+    不稳定，宿主升级会静默失效）。并排像素比对：三者（宿主 done / 插件 scheduled / 插件 urgent）
+    实心核心均为 <code>6×6</code>，<code>scheduled</code> 中心色 <code>rgb(173,178,184)</code>
+    与宿主逐字段相等。
     <br><br>
     <b>颜色跟随宿主语义色板，不引入插件专属色。</b>宿主那套点是语义状态色
     （<code>done</code> 绿 / <code>ongoing</code> 灰 / <code>warning</code> 琥珀 / <code>error</code> 红）。
