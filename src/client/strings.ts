@@ -68,6 +68,9 @@ const zh = {
   presenceOverdueAria: '有 {n} 条定时提醒已到期，等待发送',
   presenceTooltip: '下次 {time} · {n} 条任务',
   presenceOverdueTooltip: '已到期 · {n} 条任务（等待会话空闲发送）',
+  /** 悬浮卡片状态区追加行（与宿主 hoverStatus 同构，纯追加不改写既有状态） */
+  hoverScheduleStatus: '有 {n} 条定时提醒，下次 {time}',
+  hoverScheduleOverdue: '有 {n} 条定时提醒已到期，等待发送',
   relMinutes: '{m} 分后',
   relHours: '{h} 小时后',
   relTomorrow: '明天 {time}',
@@ -125,6 +128,8 @@ const en: { [K in keyof typeof zh]: string } = {
   presenceOverdueAria: '{n} scheduled reminder(s) due, waiting to send',
   presenceTooltip: 'Next at {time} · {n} task(s)',
   presenceOverdueTooltip: 'Due · {n} task(s) (sends when the session is idle)',
+  hoverScheduleStatus: '{n} scheduled reminder(s), next {time}',
+  hoverScheduleOverdue: '{n} scheduled reminder(s) due, waiting to send',
   relMinutes: 'in {m} min',
   relHours: 'in {h} h',
   relTomorrow: 'Tomorrow {time}',
