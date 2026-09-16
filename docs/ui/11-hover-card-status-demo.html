@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-later · 悬浮卡片定时状态行 Demo（issue #4）</title>
+<style>
+  /* ============================================================
+     全部数值取自 127.0.0.1:3080 的 getComputedStyle 实测，
+     非设计稿估值。来源见每节注释。
+     ============================================================ */
+  :root {
+    color-scheme: dark light;
+
+    /* 宿主浮层卡片实测（._card_ 容器） */
+    --card-bg: #2c2c2e;
+    --card-radius: 12px;
+    --card-pad: 12px 16px;
+    --card-shadow: 0 0 1px rgba(0,0,0,.2), 0 0 4px rgba(0,0,0,.02), 0 12px 32px rgba(0,0,0,.08);
+
+    /* 宿主卡片文字实测 */
+    --hover-title: #ffffff;   /* .hoverTitle  → rgb(255,255,255) */
+    --hover-time:  #cfd3d6;   /* .hoverTime   → rgb(207,211,214) */
+    --hover-status:#adb2b8;   /* .hoverStatus → rgb(173,178,184) */
+
+    /* 宿主状态点实测（::before 10px 环 + ::after 6px 芯，均 50%） */
+    --dot-size: 10px;
+    --dot-core: 6px;
+    --state-done:    #22c55e;  /* rgb(34,197,94)   */
+    --state-ongoing: #f9fafb;  /* rgb(249,250,251) */
+    --state-warning: #f59e0b;  /* rgb(245,158,11)  */
+    --state-error:   #f25a5a;  /* rgb(242,90,90)   */
+
+    /* 侧栏行内 badge(.ss-presence) 的定时专属紫（卡片状态行已不再使用它，
+       改为跟随宿主语义色板；此处仅供第 4 节的行内 badge 参考块使用） */
+    --sched: #8b5cf6;
+
+    /* 页面外壳（demo 自身，非宿主） */
+    --page-bg: #17181b;
+    --page-fg: #e8e9ec;
+    --page-dim: #9aa0a8;
+    --page-line: #2c2f35;
+    --page-soft: #1f2126;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --page-bg: #ffffff; --page-fg: #1b1d21; --page-dim: #6b7280;
+      --page-line: #e5e7eb; --page-soft: #f6f7f9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 24px 64px;
+    background: var(--page-bg); color: var(--page-fg);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lede { color: var(--page-dim); margin: 0 0 8px; font-size: 13px; }
+  .lede code { background: var(--page-soft); padding: 1px 5px; border-radius: 4px; }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--page-dim); margin: 36px 0 12px; font-weight: 600;
+  }
+  h3 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+
+  /* ---------- 宿主浮层卡片：完全复刻实测样式 ---------- */
+  .stage {
+    /* 卡片是 body 级 portal，真实场景悬于深色背景之上 */
+    background: #0f1012; border: 1px solid var(--page-line);
+    border-radius: 10px; padding: 28px; display: flex;
+    flex-wrap: wrap; gap: 28px; align-items: flex-start;
+  }
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    box-shadow: var(--card-shadow);
+    color: #f9fafb;
+    min-width: 220px; max-width: 320px;
+  }
+  .hoverContent { display: flex; flex-direction: column; gap: 8px; }
+  .hoverTitle { color: var(--hover-title); font-size: 14px; line-height: 20px; overflow-wrap: break-word; }
+  .hoverTime  { color: var(--hover-time);  font-size: 12px; line-height: 16px; }
+  .hoverStatus {
+    color: var(--hover-status); display: flex; align-items: center; gap: 8px;
+    font-size: 12px; line-height: 20px;
+  }
+
+  /* 宿主状态点：环形 ::before + 实心 ::after（实测结构） */
+  .dot { display: block; width: var(--dot-size); height: var(--dot-size); position: relative; flex: none; }
+  .dot::before, .dot::after { content: ""; position: absolute; border-radius: 50%; }
+  .dot::before { inset: 0; }
+  .dot::after  { inset: 2px; }
+  .dot[data-state="done"]::before,    .dot[data-state="done"]::after    { background: var(--state-done); }
+  .dot[data-state="ongoing"]::before, .dot[data-state="ongoing"]::after { background: var(--state-ongoing); }
+  .dot[data-state="warning"]::before, .dot[data-state="warning"]::after { background: var(--state-warning); }
+  .dot[data-state="error"]::before,   .dot[data-state="error"]::after   { background: var(--state-error); }
+
+  /* ---------- 本插件追加行（与 .hoverStatus 同构） ---------- */
+  .ss-hover-status {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--hover-status); font-size: 12px; line-height: 20px;
+  }
+  /* 与生产实现一致：宿主同款双层结构（外环 10px + 内芯 6px，同色） */
+  .ss-hover-status-dot {
+    position: relative; display: block; flex: none;
+    width: 10px; height: 10px;
+    color: var(--hover-status);
+  }
+  .ss-hover-status-dot::before,
+  .ss-hover-status-dot::after {
+    content: ""; position: absolute; border-radius: 50%; background: currentColor;
+  }
+  /* 关键：::before 是 10% 透明度的光晕，不是实心外环 */
+  .ss-hover-status-dot::before { inset: 0; opacity: 0.1; }
+  .ss-hover-status-dot::after  { inset: 2px; }
+  /* 语义映射对齐宿主 done/ongoing/warning/error */
+  .ss-hover-status[data-state="urgent"]  .ss-hover-status-dot { color: var(--state-warning); }
+  .ss-hover-status[data-state="overdue"] .ss-hover-status-dot { color: var(--state-error); }
+
+  /* ---------- demo 标注 ---------- */
+  .specimen { display: flex; flex-direction: column; gap: 8px; }
+  /* 让并排卡片的顶边对齐（注释多少会影响高度，卡片本身不该被拉伸） */
+  .stage > .specimen > .card { align-self: flex-start; }
+  .cap { font-size: 12px; color: var(--page-dim); }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--page-line); color: var(--page-dim); margin-right: 6px;
+  }
+  .tag.mine { border-color: var(--sched); color: var(--sched); }
+  .tag.host { border-color: var(--state-done); color: var(--state-done); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--page-line); vertical-align: top; }
+  th { color: var(--page-dim); font-weight: 600; font-size: 12px; }
+  code { background: var(--page-soft); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  .note {
+    background: var(--page-soft); border-left: 3px solid var(--sched);
+    padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; color: var(--page-dim);
+  }
+  .note b { color: var(--page-fg); }
+
+  /* 侧栏行内 badge 参考 */
+  .row-demo {
+    display: flex; align-items: center; gap: 6px; padding: 0 8px; height: 32px;
+    border-radius: 8px; background: transparent; width: 260px;
+  }
+  .row-demo:hover { background: rgba(255,255,255,.06); }
+  .row-slot { display: inline-flex; width: 16px; height: 20px; justify-content: center; align-items: center; flex: none; color: #9aa0a8; }
+  .row-title { flex: 1; font-size: 14px; line-height: 20px; color: #e8e9ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ss-presence { display: inline-flex; flex: none; color: var(--sched); }
+  .ss-presence rect { fill: currentColor; }
+  .ss-presence .ss-presence-ring { opacity: .8; }
+  .ss-presence[data-state="urgent"] { color: var(--state-warning); }
+  .ss-presence[data-state="overdue"] { color: var(--state-error); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>悬浮卡片 · 定时状态行</h1>
+  <p class="lede">
+    issue #4 的修复样式。同一行：行内 badge 说「有提醒」，悬浮卡片原本只说「空闲」。
+    修复方式是在宿主卡片状态区<b>纯追加</b>一行 <code>.ss-hover-status</code>。
+    本页所有色值/字号/间距均取自 <code>127.0.0.1:3080</code> 的 <code>getComputedStyle</code> 实测。
+  </p>
+
+  <h2>1 · 修复后的卡片（正常排期）</h2>
+  <div class="stage">
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">检查日志</div>
+          <div class="hoverTime">3天前</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+          <div class="ss-hover-status" data-state="scheduled">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 1 条定时提醒，下次 32 分后</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">
+        <span class="tag host">宿主</span>标题 / 时间 / 空闲（原样保留）<br>
+        <span class="tag mine">本插件</span>追加的定时状态行
+      </div>
+    </div>
+
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">修复前（对照）</div>
+          <div class="hoverTime">3天前</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+        </div>
+      </div>
+      <div class="cap">卡片只说「空闲」——与行内 badge 自相矛盾</div>
+    </div>
+  </div>
+
+  <h2>2 · 三态（scheduled / urgent / overdue）</h2>
+  <div class="stage">
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">scheduled</div>
+          <div class="hoverTime">常态排期</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+          <div class="ss-hover-status" data-state="scheduled">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 2 条定时提醒，下次 3 小时后</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">灰　<code>rgb(173,178,184)</code>　&gt;5min（同宿主 ongoing）</div>
+    </div>
+
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">urgent</div>
+          <div class="hoverTime">即将触发</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+          <div class="ss-hover-status" data-state="urgent">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 1 条定时提醒，下次 4 分后</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">琥珀　<code>#f59e0b</code>　≤5min</div>
+    </div>
+
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">overdue</div>
+          <div class="hoverTime">到期等待</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+          <div class="ss-hover-status" data-state="overdue">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 1 条定时提醒已到期，等待发送</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">红　<code>#f25a5a</code>　≤0，无时间槽</div>
+    </div>
+  </div>
+
+  <h2>3 · 与宿主既有状态共存（纯追加，优先级不变）</h2>
+  <div class="stage">
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">等待批准 + 有提醒</div>
+          <div class="hoverTime">运行中</div>
+          <div class="hoverStatus"><span class="dot" data-state="warning"></span><span>等待批准</span></div>
+          <div class="ss-hover-status" data-state="scheduled">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 1 条定时提醒，下次 20 分后</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">warning 仍是第一行，追加行在末尾</div>
+    </div>
+
+    <div class="specimen">
+      <div class="card">
+        <div class="hoverContent">
+          <div class="hoverTitle">空闲 + 无提醒</div>
+          <div class="hoverTime">5小时前</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+        </div>
+      </div>
+      <div class="cap">无活动任务 → 不追加任何节点（零改动）</div>
+    </div>
+  </div>
+
+  <h2>4 · 行内 badge ↔ 卡片 文案一致性</h2>
+  <div class="stage">
+    <div class="specimen">
+      <div class="row-demo">
+        <span class="row-slot">
+          <span class="ss-presence" data-state="scheduled">
+            <svg width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true">
+              <g class="ss-presence-ring">
+                <rect x="0" y="0" width="2" height="2"/><rect x="4" y="0" width="2" height="2"/>
+                <rect x="8" y="0" width="2" height="2"/><rect x="8" y="4" width="2" height="2"/>
+                <rect x="8" y="8" width="2" height="2"/><rect x="4" y="8" width="2" height="2"/>
+                <rect x="0" y="8" width="2" height="2"/><rect x="0" y="4" width="2" height="2"/>
+              </g>
+              <g class="ss-presence-hand">
+                <rect x="4" y="2" width="2" height="2"/><rect x="6" y="4" width="2" height="2"/>
+              </g>
+            </svg>
+          </span>
+        </span>
+        <span class="row-title">检查日志</span>
+      </div>
+      <div class="cap">侧栏行内 badge（<code>.ss-presence</code>，紫色像素时钟）</div>
+      <div class="card" style="margin-top:10px">
+        <div class="hoverContent">
+          <div class="hoverTitle">检查日志</div>
+          <div class="hoverTime">3天前</div>
+          <div class="hoverStatus"><span class="dot" data-state="done"></span><span>空闲</span></div>
+          <div class="ss-hover-status" data-state="scheduled">
+            <span class="ss-hover-status-dot" aria-hidden="true"></span>
+            <span>有 1 条定时提醒，下次 32 分后</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">两者现在说同一件事（均为「下次 32 分后」）</div>
+    </div>
+  </div>
+
+  <h2>5 · 规格对照表</h2>
+  <table>
+    <thead><tr><th>属性</th><th>宿主 <code>.hoverStatus</code>（实测）</th><th>本插件 <code>.ss-hover-status</code></th></tr></thead>
+    <tbody>
+      <tr><td>display / gap</td><td><code>flex</code> / <code>8px</code></td><td>同（刻意对齐）</td></tr>
+      <tr><td>font-size / line-height</td><td><code>12px</code> / <code>20px</code></td><td>同</td></tr>
+      <tr><td>文字色</td><td><code>rgb(173,178,184)</code></td><td>同</td></tr>
+      <tr><td>状态点尺寸</td><td>10px（环）+ 6px（芯）</td><td><b>同</b>（双层结构一致）</td></tr>
+      <tr><td>状态点色</td><td>按 data-state：done 绿 / ongoing 灰 / warning 琥珀 / error 红</td><td><b>同色板</b>：scheduled→ongoing 灰 / urgent→warning 琥珀 / overdue→error 红</td></tr>
+      <tr><td>卡片内边距</td><td><code>12px 16px</code></td><td>不涉及（追加在既有卡片内）</td></tr>
+      <tr><td>行顺序</td><td>标题 → 时间 → 状态…</td><td>追加在<b>末尾</b>，不动宿主行</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6 · 与宿主的一致性 &amp; 已知限制</h2>
+  <div class="note">
+    <b>状态点已与宿主严格同构。</b>实测宿主 StateDot 为「<code>10×10</code> relative +
+    <code>::before 10px/inset:0/opacity:0.1</code> + <code>::after 6px/inset:2px</code>」双层结构。
+    <b>关键：<code>::before</code> 是 10% 透明度的光晕，不是实心外环</b>；<code>::after</code>
+    才是 6px 实心核心。若漏掉 <code>opacity: 0.1</code>，<code>::before</code> 会盖住核心，
+    渲染成 10px 实心圆（明显偏大偏实——这是本项目踩过的坑）。
+    本插件按同样的写法自绘，<b>未复用</b>宿主的构建期 hash 类名（<code>_dot_xxxxxx_n</code>
+    不稳定，宿主升级会静默失效）。并排像素比对：三者（宿主 done / 插件 scheduled / 插件 urgent）
+    实心核心均为 <code>6×6</code>，<code>scheduled</code> 中心色 <code>rgb(173,178,184)</code>
+    与宿主逐字段相等。
+    <br><br>
+    <b>颜色跟随宿主语义色板，不引入插件专属色。</b>宿主那套点是语义状态色
+    （<code>done</code> 绿 / <code>ongoing</code> 灰 / <code>warning</code> 琥珀 / <code>error</code> 红）。
+    早期版本曾用插件专属紫表示「有定时」，问题是它等于在色板里加了第五种含义，且
+    <code>urgent</code> 时会与宿主 <code>warning</code> 撞色。现映射为：
+    <code>scheduled → ongoing 灰</code>、<code>urgent → warning 琥珀</code>、
+    <code>overdue → error 红</code>。
+    <br><br>
+    <b>⚠️ 已知限制：浅色主题未适配（待办）。</b>上述色值是<b>当前深色主题</b>下从宿主
+    实测得到的<b>运行时值</b>，宿主自身引用 <code>--dsw-alias-*</code> token、会随主题变化，
+    而本插件是硬编码常量。因此<b>仅在深色主题下与宿主一致</b>；切到浅色主题或其他配色方案时
+    本行不会跟随。修法：实测浅色主题下该卡片的实际底色，再改用对应 token。
+  </div>
+
+</div>
+</body>
+</html>

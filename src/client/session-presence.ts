@@ -18,10 +18,30 @@
  * 插在 slot 之后（`.ss-presence-beside`），否则塞进 slot 内（与 orb 同位）。
  * badge 元素带 `.ss-presence` 类，全部状态用 data-state 表达；React 重渲染
  * 移除注入节点时由 MutationObserver 重插。
+ *
+ * ## 悬浮卡片状态区增补（issue #4）
+ *
+ * 行内 badge 与宿主悬浮卡片数据源不一致：卡片正文由宿主 `sessionStatuses`
+ * 的**闭合硬编码状态链**生成（只读 subagents / pendingInteraction / running
+ * / completed），`userSchedules` 不在其中，且宿主**没有对外暴露任何 hover
+ * 卡片插槽**（ui-conversation / ui-sidebar / ui-workspace 的 SlotMap 里均无
+ * hover 相关槽位）。因此卡片侧不存在注册式扩展点，只能在 DOM 层增补。
+ *
+ * 可行性的关键事实（实测）：卡片是挂在 `document.body` 下的 portal，**不与
+ * 宿主行共享 DOM 祖先**，无法靠行元素找过去；但卡片的 React fiber 在浅层
+ * （实测深度 4）携带 `memoizedProps.node.id`，与行元素用的是**同一套反查
+ * 技术**，因此仍能把卡片关联回 sessionId。
+ *
+ * 增补方式是**纯追加**：仅在卡片状态区末尾追加一行与宿主 `.hoverStatus`
+ * 同构的节点，不改写、不替换、不重排宿主已有状态行，故 pendingInteraction /
+ * running 等既有状态的优先级天然不变；无活动定时任务的会话不做任何改动。
+ * 卡片每次悬浮由 React 重建子树（注入节点会被清掉），重插同样交给既有的
+ * MutationObserver 重扫循环。
  * @module dsh-later/client/session-presence
  */
 import {
   badgeStateFor,
+  hoverScheduleStatus,
   relativeFireLabel,
   summarizeSchedules,
   type PresenceBadgeState,
@@ -63,6 +83,8 @@ export interface SessionPresenceOptions {
 
 /** badge 类名（本插件命名空间，绝不复用宿主类名）。 */
 const BADGE_CLASS = 'ss-presence';
+/** 悬浮卡片增补行类名（本插件命名空间）。 */
+const HOVER_ROW_CLASS = 'ss-hover-status';
 /** fiber 探测的最大上溯层数（实测深度 3；留余量到 8）。 */
 const FIBER_MAX_DEPTH = 8;
 /** 扫描去抖（流式输出期间 mutation 密集，合并到每帧级别足够）。 */
@@ -98,7 +120,23 @@ interface FiberNodeLike {
 
 /** 会话行 → sessionId：向上 ≤8 层 fiber，取 `memoizedProps.node.id`（session- 前缀）。 */
 function sessionIdOfRow(row: Element): string | undefined {
-  const host = row as unknown as Record<string, unknown>;
+  return sessionIdOfNode(row);
+}
+
+/**
+ * 悬浮卡片 → sessionId。
+ *
+ * 卡片是 `document.body` 下的 portal，与宿主会话行没有 DOM 祖先关系，只能靠
+ * fiber 反查；实测从卡片根上溯第 4 层即 `SessionNode`（携带 node.id），与行
+ * 元素同源。探测失败返回 undefined（安静跳过，绝不误标）。
+ */
+function sessionIdOfHoverCard(card: Element): string | undefined {
+  return sessionIdOfNode(card);
+}
+
+/** 共享的 fiber 反查：向上 ≤8 层取 `memoizedProps.node.id`（session- 前缀）。 */
+function sessionIdOfNode(element: Element): string | undefined {
+  const host = element as unknown as Record<string, unknown>;
   const fiberKey = Object.keys(host).find((key) => key.startsWith('__reactFiber$'));
   if (fiberKey === undefined) return undefined;
   let fiber = host[fiberKey] as FiberNodeLike | undefined;
@@ -172,6 +210,8 @@ export function mountSessionPresence(options: SessionPresenceOptions): () => voi
       if (row.hasAttribute('aria-expanded')) continue;
       applyBadge(row, now, dict);
     }
+    // 悬浮卡片只有在弹出时才存在于 DOM；未弹出时是零开销的空查询。
+    applyHoverCard(now, dict);
   };
 
   const scheduleScan = (): void => {
@@ -223,6 +263,79 @@ export function mountSessionPresence(options: SessionPresenceOptions): () => voi
     else slot.append(badge);
   }
 
+  /**
+   * 找当前弹出的悬浮卡片：返回卡片 portal 根、正文根（状态行的父容器）与
+   * 关联到的 sessionId。
+   *
+   * 卡片是 `body` 的直系 portal（实测 DOM：`body > div._card_* > div.hoverContent`），
+   * 与会话行没有 DOM 祖先关系，故只能按结构探测 + fiber 反查关联：
+   * 遍历 body 直系浮层，取「首个子元素内含状态点行、且自身 fiber 能反查到
+   * sessionId」的那个作为卡片。
+   *
+   * ⚠️ 刻意不依赖 `YDXeBa_*` / `_card_*` 等构建期 hash 类名；探测不到就返回
+   * null（安静跳过，绝不误标）。
+   */
+  function findHoverCard(): { card: HTMLElement; statusHost: HTMLElement; sessionId: string } | null {
+    for (const card of Array.from(document.body.children)) {
+      if (!(card instanceof HTMLElement)) continue;
+      const statusHost = card.firstElementChild;
+      if (!(statusHost instanceof HTMLElement)) continue;
+      // 状态行：直接子块里含 aria-hidden 的前导 span（状态点）+ 文案 span。
+      const hasStatusRow = Array.from(statusHost.children).some((child) => {
+        const dot = child.firstElementChild;
+        return (
+          child.children.length >= 2 &&
+          dot !== null &&
+          dot.tagName === 'SPAN' &&
+          dot.getAttribute('aria-hidden') === 'true'
+        );
+      });
+      if (!hasStatusRow) continue;
+      const sessionId = sessionIdOfHoverCard(card);
+      if (sessionId === undefined) continue;
+      return { card, statusHost, sessionId };
+    }
+    return null;
+  }
+
+  /**
+   * 对悬浮卡片追加一行定时状态（仅当该会话有活动任务时）。
+   *
+   * 纯追加：宿主既有状态行原样保留，故 pendingInteraction / running 的优先级
+   * 不受影响；已有本插件行时只更新文案（React 重建后由重扫重插）。
+   */
+  function applyHoverCard(now: number, dict: SchedStrings): void {
+    const found = findHoverCard();
+    if (found === null) return;
+    const { statusHost, sessionId } = found;
+    const existing = statusHost.querySelector<HTMLElement>(`:scope > .${HOVER_ROW_CLASS}`);
+    const entry = index.get(sessionId);
+    if (entry === undefined) {
+      // 该会话无活动任务：移除可能残留的行（含从有任务行切到无任务行）。
+      existing?.remove();
+      return;
+    }
+    const { label } = hoverScheduleStatus(entry, now, labelsFor(dict), dict, formatHhmm, formatDate);
+    const state = badgeStateFor(entry.nextAt, now);
+    if (existing !== null) {
+      const text = existing.lastElementChild;
+      if (text !== null && text.textContent !== label) text.textContent = label;
+      if (existing.dataset.state !== state) existing.dataset.state = state;
+      return;
+    }
+    // 与宿主 .hoverStatus 行同构：状态点（aria-hidden）+ 文案 span。
+    const row = document.createElement('div');
+    row.className = HOVER_ROW_CLASS;
+    row.dataset.state = state;
+    const dot = document.createElement('span');
+    dot.setAttribute('aria-hidden', 'true');
+    dot.className = 'ss-hover-status-dot';
+    const text = document.createElement('span');
+    text.textContent = label;
+    row.append(dot, text);
+    statusHost.append(row);
+  }
+
   // 数据/环境触发：列表变化（含当前会话投影帧）、语言切换、DOM 变化。
   const unsubscribeList = sessions.list.subscribe(scheduleScan);
   const unsubscribeLocale = locale?.subscribe(scheduleScan);
@@ -265,5 +378,6 @@ export function mountSessionPresence(options: SessionPresenceOptions): () => voi
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('online', onVisible);
     for (const badge of Array.from(document.querySelectorAll(`.${BADGE_CLASS}`))) badge.remove();
+    for (const row of Array.from(document.querySelectorAll(`.${HOVER_ROW_CLASS}`))) row.remove();
   };
 }

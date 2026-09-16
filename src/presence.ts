@@ -59,6 +59,42 @@ export function badgeStateFor(nextAt: number | undefined, now: number): Presence
   return 'scheduled';
 }
 
+/**
+ * 悬浮卡片状态行的完整文案（与宿主 `.hoverStatus` 行同构：一个状态点 + 一句
+ * 描述）。宿主的状态链对定时任务无感知，本插件**只追加**这样一行，不改写也
+ * 不替换宿主已有的 `空闲` / `进行中` 等行，因此既有状态优先级天然不变。
+ *
+ * @param entry - 该会话的定时概要（调用方保证 count > 0）。
+ * @param now - 当前时刻（epoch ms），用于判定 overdue 与相对时间。
+ * @param labels - 相对时间文案槽位。
+ * @param strings - 当前语言的字典。
+ * @param formatHhmm - 时钟面格式化（注入以便单测）。
+ * @param formatDate - 日期面格式化（注入以便单测）。
+ * @returns 状态文案 + 视觉状态（`done` 为中性信息态，与宿主同款状态点）。
+ */
+export function hoverScheduleStatus(
+  entry: PresenceSummary,
+  now: number,
+  labels: RelativeFireLabels,
+  strings: { readonly hoverScheduleStatus: string; readonly hoverScheduleOverdue: string },
+  formatHhmm: (epoch: number) => string,
+  formatDate: (epoch: number) => string,
+): { readonly label: string; readonly tone: PresenceBadgeState } {
+  const tone = badgeStateFor(entry.nextAt, now);
+  if (tone === 'overdue' || entry.nextAt === undefined) {
+    return { label: formatTemplate(strings.hoverScheduleOverdue, { n: entry.count }), tone };
+  }
+  const time = relativeFireLabel(entry.nextAt, now, labels, formatHhmm, formatDate);
+  return { label: formatTemplate(strings.hoverScheduleStatus, { n: entry.count, time }), tone };
+}
+
+/** `{name}` 占位符替换（与 client/strings 的 format 同语义；此处零依赖）。 */
+function formatTemplate(template: string, params: Readonly<Record<string, string | number>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    key in params ? String(params[key]) : match,
+  );
+}
+
 /** 相对触发时间的文案槽位（由调用方按语言准备；时间串经 formatHhmm 注入）。 */
 export interface RelativeFireLabels {
   /** ≤1 分钟：即将发送。 */
