@@ -1,7 +1,7 @@
 {
   "name": "dsh-later",
   "version": "1.0.0",
-  "description": "会话内定时消息插件：在 dsh-schedule 引擎之上提供用户可直接操作的 GUI + 用户工具，实现「关网页也能准时触发的会话内定时提醒」。",
+  "description": "给 DSH 加上定时发送：输入一句话，到点自动以你的身份送出，关掉网页也准时触发。定时发送 / 定时提醒 / 延迟发送。",
   "keywords": [
     "dsh",
     "dsh-plugin",
