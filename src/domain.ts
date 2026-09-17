@@ -80,6 +80,11 @@ export interface UserScheduleWireItem {
   readonly remaining_seconds?: number;
   /** 日志 schedule id（pause 前 / active 当前）。 */
   readonly schedule_id?: string;
+  /**
+   * 进度条总窗口（秒）。resume 后 `after_seconds` 只是剩余时长；
+   * 此字段保留原 after 间隔，使进度条从冻结处继续而不是从 0 重跑。
+   */
+  readonly window_seconds?: number;
 }
 
 /** 投影输出值。 */

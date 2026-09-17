@@ -32,6 +32,7 @@ export declare const userSchedulesSchema: z.ZodObject<{
         status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
         remaining_seconds: z.ZodOptional<z.ZodNumber>;
         schedule_id: z.ZodOptional<z.ZodString>;
+        window_seconds: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const userSchedulesStateSchema: z.ZodObject<{
@@ -138,6 +139,7 @@ export declare const userSchedulesProjectionUnit: {
                 status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
                 remaining_seconds: z.ZodOptional<z.ZodNumber>;
                 schedule_id: z.ZodOptional<z.ZodString>;
+                window_seconds: z.ZodOptional<z.ZodNumber>;
             }, z.core.$strict>>;
         }, z.core.$strict>;
         readonly view: typeof viewUserScheduleProjection;

@@ -201,6 +201,12 @@ test('resume 后投影不残留 paused（双行回归）', async () => {
   assert.equal(pausedRows.length, 0, 'resume 后不得残留 paused 行');
   assert.equal(activeRows.length, 1);
   assert.equal(activeRows[0].id, p.uid, 'wire id 应为稳定 uid');
+  // resume 后：日志 afterSeconds=remaining，但 window_seconds 仍是原 after 间隔
+  assert.equal(activeRows[0].window_seconds, 600, 'window_seconds 保留原 after 间隔');
+  assert.ok(
+    (activeRows[0].after_seconds ?? 0) <= 600,
+    'after_seconds 为 remaining（≤ 原窗口）',
+  );
 });
 
 test('delete 支持 uid：活动任务与暂停项', async () => {
