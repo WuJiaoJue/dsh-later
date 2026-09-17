@@ -46,8 +46,17 @@ function barSegments(
 ): { readonly totalRatio: number; readonly count: number } {
   const end = Date.parse(item.scheduled_at);
   let start: number;
-  if (item.kind === 'after' && item.after_seconds !== undefined) {
-    start = end - item.after_seconds * 1000;
+  if (item.kind === 'after') {
+    // resume 后 after_seconds=剩余；window_seconds=原间隔 → 进度从冻结处继续
+    const windowSec = item.window_seconds ?? item.after_seconds;
+    if (windowSec !== undefined) {
+      start = end - windowSec * 1000;
+    } else if (item.created_at !== undefined) {
+      const parsed = Date.parse(item.created_at);
+      start = Number.isNaN(parsed) ? (firstSeen.get(item.id) ?? now) : parsed;
+    } else {
+      start = firstSeen.get(item.id) ?? now;
+    }
   } else if (item.kind === 'every' && item.every_seconds !== undefined) {
     start = end - item.every_seconds * 1000;
   } else if (item.created_at !== undefined) {

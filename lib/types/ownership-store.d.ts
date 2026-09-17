@@ -10,6 +10,11 @@ export interface OwnedEntry {
      * 旧条目可缺省（wire 回退用 scheduleId）。
      */
     readonly uid?: string;
+    /**
+     * 进度条总窗口（秒）。resume 后日志里的 `afterSeconds` 只是剩余时长，
+     * 若直接当窗口会从 0 重跑；此处保留原 after 间隔供 wire/进度条使用。
+     */
+    readonly windowSeconds?: number;
 }
 /** 暂停留档（仅 kind==='after'；不进会话日志）。 */
 export interface PausedEntry {
@@ -36,7 +41,7 @@ export declare function getOwnership(sessionId: string, id: string): OwnedEntry 
 /** 生成稳定插件 uid（pause/resume 跨日志 id 变更）。 */
 export declare function newTaskUid(): string;
 /** 记录（新增或覆盖）一条所有权；幂等。仅显式传入 `uid` 时写入稳定身份。 */
-export declare function recordOwnership(sessionId: string, id: string, delivery: UserScheduleDelivery, uid?: string): OwnedEntry;
+export declare function recordOwnership(sessionId: string, id: string, delivery: UserScheduleDelivery, uid?: string, windowSeconds?: number): OwnedEntry;
 /** 撤销一条所有权；幂等（不存在时无操作）。 */
 export declare function removeOwnership(sessionId: string, id: string): void;
 /** 按 uid 找当前仍 active 的 schedule id（缺失 undefined）。 */

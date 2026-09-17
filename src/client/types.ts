@@ -16,6 +16,8 @@ export interface ClientSchedule {
   readonly status?: 'active' | 'paused';
   readonly remaining_seconds?: number;
   readonly schedule_id?: string;
+  /** 进度条总窗口（秒）。resume 后 after_seconds 只是剩余，此字段保留原间隔。 */
+  readonly window_seconds?: number;
 }
 
 /** `userSchedules` 投影值。 */

@@ -49,6 +49,11 @@ export interface OwnedEntry {
    * 旧条目可缺省（wire 回退用 scheduleId）。
    */
   readonly uid?: string;
+  /**
+   * 进度条总窗口（秒）。resume 后日志里的 `afterSeconds` 只是剩余时长，
+   * 若直接当窗口会从 0 重跑；此处保留原 after 间隔供 wire/进度条使用。
+   */
+  readonly windowSeconds?: number;
 }
 
 /** 暂停留档（仅 kind==='after'；不进会话日志）。 */
@@ -269,15 +274,27 @@ export function recordOwnership(
   id: string,
   delivery: UserScheduleDelivery,
   uid?: string,
+  windowSeconds?: number,
 ): OwnedEntry {
   if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof id !== 'string' || id.length === 0) {
-    return uid !== undefined ? { delivery, createdAt: Date.now(), uid } : { delivery, createdAt: Date.now() };
+    const bare: OwnedEntry = {
+      delivery,
+      createdAt: Date.now(),
+      ...(uid !== undefined ? { uid } : {}),
+      ...(typeof windowSeconds === 'number' ? { windowSeconds } : {}),
+    };
+    return bare;
   }
   const file = readFresh(sessionId);
   const entries: Record<string, OwnedEntry> = { ...file.entries };
   const nextUid = uid ?? entries[id]?.uid;
-  const entry: OwnedEntry =
-    nextUid !== undefined ? { delivery, createdAt: Date.now(), uid: nextUid } : { delivery, createdAt: Date.now() };
+  const nextWindow = windowSeconds ?? entries[id]?.windowSeconds;
+  const entry: OwnedEntry = {
+    delivery,
+    createdAt: Date.now(),
+    ...(nextUid !== undefined ? { uid: nextUid } : {}),
+    ...(typeof nextWindow === 'number' ? { windowSeconds: nextWindow } : {}),
+  };
   entries[id] = entry;
   writeThrough(sessionId, { version: 2, entries, paused: file.paused ?? {} });
   return entry;

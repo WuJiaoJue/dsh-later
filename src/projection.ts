@@ -46,6 +46,7 @@ const wireItemSchema = z
     status: z.union([z.literal('active'), z.literal('paused')]).optional(),
     remaining_seconds: z.number().optional(),
     schedule_id: z.string().optional(),
+    window_seconds: z.number().optional(),
   })
   .strict();
 
@@ -138,7 +139,9 @@ export function initUserScheduleProjection(
 
 /** 序列化一条活动记录为 wire 项（id 优先稳定 uid）。 */
 function wireItemOf(record: StoredScheduleRecord, sessionId: string): UserScheduleWireItem {
-  const uid = sessionId.length > 0 ? getOwnership(sessionId, record.id)?.uid : undefined;
+  const ownership = sessionId.length > 0 ? getOwnership(sessionId, record.id) : undefined;
+  const uid = ownership?.uid;
+  const windowSeconds = ownership?.windowSeconds;
   return {
     id: uid ?? record.id,
     kind: record.kind,
@@ -146,6 +149,9 @@ function wireItemOf(record: StoredScheduleRecord, sessionId: string): UserSchedu
     ...(record.kind === 'after' ? { after_seconds: record.afterSeconds } : {}),
     ...(record.kind === 'every' ? { every_seconds: record.everySeconds } : {}),
     ...(typeof record.createdAt === 'number' ? { created_at: new Date(record.createdAt).toISOString() } : {}),
+    ...(record.kind === 'after' && typeof windowSeconds === 'number'
+      ? { window_seconds: windowSeconds }
+      : {}),
     scheduled_at: record.scheduledAt,
     delivery_mode: 'session-local',
     status: 'active',
@@ -154,12 +160,14 @@ function wireItemOf(record: StoredScheduleRecord, sessionId: string): UserSchedu
 }
 
 function pausedWireItemOf(entry: PausedEntry): UserScheduleWireItem {
+  const windowSec = entry.originalAfterSeconds ?? entry.remainingSeconds;
   return {
     id: entry.uid,
     kind: 'after',
     prompt: entry.prompt,
     // 进度条总窗口用原 after 间隔；remaining 单独给冻结剩余
-    after_seconds: entry.originalAfterSeconds ?? entry.remainingSeconds,
+    after_seconds: windowSec,
+    window_seconds: windowSec,
     scheduled_at: entry.originalScheduledAt,
     delivery_mode: 'session-local',
     status: 'paused',
