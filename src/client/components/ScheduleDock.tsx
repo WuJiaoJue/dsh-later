@@ -130,11 +130,16 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const now = useNow(1000);
   const { t } = useSchedT(locale);
   const projection = typeof useProjection === 'function' ? useProjection('userSchedules') : undefined;
+  // 删除暂停项只改 sidecar、不写会话事件 → 投影不会立刻更新；成功后本地先摘掉
+  const [dismissedPaused, setDismissedPaused] = useState<ReadonlySet<string>>(new Set());
   const schedules = useMemo(
-    () => [...(projection?.schedules ?? [])].sort(
-      (a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at),
-    ) as ClientSchedule[],
-    [projection],
+    () =>
+      (projection?.schedules ?? [])
+        .filter((item) => !(item.status === 'paused' && dismissedPaused.has(item.id)))
+        .sort(
+          (a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at),
+        ) as ClientSchedule[],
+    [projection, dismissedPaused],
   );
 
   const [collapsed, setCollapsed] = useState(true);
@@ -187,17 +192,41 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   if (next === undefined) return null;
   const expanded = schedules.length === 1 || !collapsed;
 
-  const handleCancel = (id: string): void => {
+  const handleCancel = (id: string, status?: 'active' | 'paused'): void => {
     setCancelling((current) => new Set(current).add(id));
-    void callCommand(sessionId, deleteLine(id)).finally(() => {
-      window.setTimeout(() => {
-        setCancelling((current) => {
-          const nextSet = new Set(current);
-          nextSet.delete(id);
-          return nextSet;
-        });
-      }, 2500);
-    });
+    // 暂停项：host 只清 sidecar、无会话事件 → 投影不刷新；成功后本地摘掉
+    if (status === 'paused') {
+      setDismissedPaused((current) => new Set(current).add(id));
+    }
+    void callCommand(sessionId, deleteLine(id))
+      .then((ok) => {
+        if (!ok && status === 'paused') {
+          // 命令未受理则撤销本地摘除，避免误藏
+          setDismissedPaused((current) => {
+            const nextSet = new Set(current);
+            nextSet.delete(id);
+            return nextSet;
+          });
+        }
+      })
+      .catch(() => {
+        if (status === 'paused') {
+          setDismissedPaused((current) => {
+            const nextSet = new Set(current);
+            nextSet.delete(id);
+            return nextSet;
+          });
+        }
+      })
+      .finally(() => {
+        window.setTimeout(() => {
+          setCancelling((current) => {
+            const nextSet = new Set(current);
+            nextSet.delete(id);
+            return nextSet;
+          });
+        }, 2500);
+      });
   };
 
   /**
@@ -418,7 +447,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
             className="ss-dock-action"
             title={t.deleteTask}
             aria-label={t.deleteTask}
-            onClick={() => handleCancel(item.id)}
+            onClick={() => handleCancel(item.id, isPaused ? 'paused' : 'active')}
           >
             <QueueDeleteIcon />
           </button>
