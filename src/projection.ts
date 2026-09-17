@@ -18,7 +18,14 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { decodeScheduleChange, resolveEveryOccurrence } from '@deepseek-ai/dsh-schedule';
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT, PROJECTION_KEY } from './domain.js';
-import { allOwnership, hasOwnership } from './ownership-store.js';
+import {
+  allOwnership,
+  allPaused,
+  findPausedByScheduleId,
+  getOwnership,
+  hasOwnership,
+} from './ownership-store.js';
+import type { PausedEntry } from './ownership-store.js';
 import type {
   UserScheduleOwnedChange,
   UserScheduleProjectionValue,
@@ -36,6 +43,9 @@ const wireItemSchema = z
     scheduled_at: z.string(),
     created_at: z.string().optional(),
     delivery_mode: z.literal('session-local'),
+    status: z.union([z.literal('active'), z.literal('paused')]).optional(),
+    remaining_seconds: z.number().optional(),
+    schedule_id: z.string().optional(),
   })
   .strict();
 
@@ -64,6 +74,18 @@ const scheduleRecordStateSchema = z
   })
   .passthrough();
 
+const pausedStateSchema = z.object({
+  uid: z.string(),
+  prompt: z.string(),
+  delivery: z.union([z.literal('context'), z.literal('user')]),
+  kind: z.literal('after'),
+  remainingSeconds: z.number(),
+  originalScheduledAt: z.string(),
+  originalAfterSeconds: z.number().optional(),
+  lastScheduleId: z.string(),
+  pausedAt: z.number(),
+});
+
 export const userSchedulesStateSchema = z.object({
   /** 会话 id（init 由 header 注入；apply 据此查询所有权 sidecar 缓存）。 */
   sessionId: z.string(),
@@ -73,6 +95,8 @@ export const userSchedulesStateSchema = z.object({
   active: z.array(scheduleRecordStateSchema),
   /** 已见 `session/end-seed` 的 seq；更早的继承前缀一律忽略。 */
   seedSeq: z.number(),
+  /** sidecar 暂停留档镜像（v4）。 */
+  paused: z.array(pausedStateSchema).default([]),
 });
 
 /** 活动存储记录：dsh-schedule 记录 + 创建时刻（来自 create 事件的 time）。 */
@@ -88,6 +112,13 @@ export interface UserScheduleProjectionState {
   readonly active: readonly StoredScheduleRecord[];
   /** 已见 `session/end-seed` 的 seq；更早的继承前缀一律忽略。 */
   readonly seedSeq: number;
+  /** sidecar 暂停留档镜像。 */
+  readonly paused: readonly PausedEntry[];
+}
+
+function pausedFromSidecar(sessionId: string): readonly PausedEntry[] {
+  if (sessionId.length === 0) return [];
+  return Object.values(allPaused(sessionId));
 }
 
 /** 初始状态：按会话 id 从所有权 sidecar 装载（进程重启后恢复 GUI 归属）。 */
@@ -96,13 +127,20 @@ export function initUserScheduleProjection(
 ): UserScheduleProjectionState {
   const sessionId = typeof header?.id === 'string' && header.id.length > 0 ? header.id : '';
   const entries = sessionId.length > 0 ? allOwnership(sessionId) : {};
-  return { sessionId, owned: Object.keys(entries), active: [], seedSeq: -1 };
+  return {
+    sessionId,
+    owned: Object.keys(entries),
+    active: [],
+    seedSeq: -1,
+    paused: pausedFromSidecar(sessionId),
+  };
 }
 
-/** 序列化一条活动记录为 wire 项（不含随墙钟变化的状态）。 */
-function wireItemOf(record: StoredScheduleRecord): UserScheduleWireItem {
+/** 序列化一条活动记录为 wire 项（id 优先稳定 uid）。 */
+function wireItemOf(record: StoredScheduleRecord, sessionId: string): UserScheduleWireItem {
+  const uid = sessionId.length > 0 ? getOwnership(sessionId, record.id)?.uid : undefined;
   return {
-    id: record.id,
+    id: uid ?? record.id,
     kind: record.kind,
     prompt: record.prompt,
     ...(record.kind === 'after' ? { after_seconds: record.afterSeconds } : {}),
@@ -110,6 +148,23 @@ function wireItemOf(record: StoredScheduleRecord): UserScheduleWireItem {
     ...(typeof record.createdAt === 'number' ? { created_at: new Date(record.createdAt).toISOString() } : {}),
     scheduled_at: record.scheduledAt,
     delivery_mode: 'session-local',
+    status: 'active',
+    schedule_id: record.id,
+  };
+}
+
+function pausedWireItemOf(entry: PausedEntry): UserScheduleWireItem {
+  return {
+    id: entry.uid,
+    kind: 'after',
+    prompt: entry.prompt,
+    // 进度条总窗口用原 after 间隔；remaining 单独给冻结剩余
+    after_seconds: entry.originalAfterSeconds ?? entry.remainingSeconds,
+    scheduled_at: entry.originalScheduledAt,
+    delivery_mode: 'session-local',
+    status: 'paused',
+    remaining_seconds: entry.remainingSeconds,
+    schedule_id: entry.lastScheduleId,
   };
 }
 
@@ -130,14 +185,27 @@ export function applyUserScheduleProjection(
 ): UserScheduleProjectionState {
   // 派生会话边界：重置自身，忽略继承前缀（AC-07 fork 隔离）。
   if (event.type === 'session/end-seed') {
-    if (state.seedSeq === event.seq && state.owned.length === 0 && state.active.length === 0) return state;
+    if (
+      state.seedSeq === event.seq &&
+      state.owned.length === 0 &&
+      state.active.length === 0 &&
+      state.paused.length === 0
+    ) {
+      return state;
+    }
     // 派生会话（fork）：sidecar 以 sessionId 隔离，派生 id 天然空表；此处再清一次
     // 兜底「同 id 重播种」场景，保持 AC-07 语义。
     const owned =
       state.sessionId.length > 0
         ? Object.keys(allOwnership(state.sessionId))
         : [];
-    return { sessionId: state.sessionId, owned, active: [], seedSeq: event.seq };
+    return {
+      sessionId: state.sessionId,
+      owned,
+      active: [],
+      seedSeq: event.seq,
+      paused: pausedFromSidecar(state.sessionId),
+    };
   }
   if (seedIsBefore(state, event)) return state;
 
@@ -146,7 +214,13 @@ export function applyUserScheduleProjection(
     if (typeof data !== 'object' || data === null || data.version !== 1) return state;
     if (data.operation === 'add') {
       if (state.owned.includes(data.id)) return state;
-      return { sessionId: state.sessionId, owned: [...state.owned, data.id], active: state.active, seedSeq: state.seedSeq };
+      return {
+        sessionId: state.sessionId,
+        owned: [...state.owned, data.id],
+        active: state.active,
+        seedSeq: state.seedSeq,
+        paused: state.paused,
+      };
     }
     if (data.operation === 'remove') {
       if (!state.owned.includes(data.id)) return state;
@@ -155,6 +229,7 @@ export function applyUserScheduleProjection(
         owned: state.owned.filter((id) => id !== data.id),
         active: state.active,
         seedSeq: state.seedSeq,
+        paused: state.paused,
       };
     }
     return state;
@@ -176,11 +251,16 @@ export function applyUserScheduleProjection(
         if (!owned.includes(record.id) && state.sessionId.length > 0 && hasOwnership(state.sessionId, record.id)) {
           owned = [...owned, record.id];
         }
+        // resume：同 uid 的暂停项应在 create 后从 paused 列表消失
+        const paused =
+          state.sessionId.length > 0
+            ? pausedFromSidecar(state.sessionId)
+            : state.paused;
         // 固化创建时刻（事件 time），供客户端进度条按真实起点计算
         const withCreated: StoredScheduleRecord =
           typeof event.time === 'number' ? { ...record, createdAt: event.time } : record;
         const existing = state.active.find((entry) => entry.id === record.id);
-        if (existing === withCreated && owned === state.owned) return state;
+        if (existing === withCreated && owned === state.owned && paused === state.paused) return state;
         return {
           sessionId: state.sessionId,
           owned,
@@ -188,17 +268,40 @@ export function applyUserScheduleProjection(
             ? [...state.active, withCreated]
             : state.active.map((entry) => (entry.id === record.id ? withCreated : entry)),
           seedSeq: state.seedSeq,
+          paused,
         };
       }
       case 'delete': {
-        if (!state.active.some((entry) => entry.id === change.id) && !state.owned.includes(change.id)) return state;
+        if (!state.active.some((entry) => entry.id === change.id) && !state.owned.includes(change.id)) {
+          // 仍可能要把 sidecar 暂停项挂进视图（pause 刚写完留档）
+          if (state.sessionId.length > 0) {
+            const paused = pausedFromSidecar(state.sessionId);
+            const linked =
+              findPausedByScheduleId(state.sessionId, change.id) !== undefined;
+            if (linked && paused !== state.paused) {
+              return {
+                sessionId: state.sessionId,
+                owned: state.owned.filter((id) => id !== change.id),
+                active: state.active.filter((entry) => entry.id !== change.id),
+                seedSeq: state.seedSeq,
+                paused,
+              };
+            }
+          }
+          return state;
+        }
         // 删除即撤销所有权声明（sidecar 由工具路径在 flush 后清理；此处先清视图）。
         const owned = state.owned.filter((id) => id !== change.id);
+        const active = state.active.filter((entry) => entry.id !== change.id);
+        const paused =
+          state.sessionId.length > 0 ? pausedFromSidecar(state.sessionId) : state.paused;
+        if (owned === state.owned && active === state.active && paused === state.paused) return state;
         return {
           sessionId: state.sessionId,
           owned,
-          active: state.active.filter((entry) => entry.id !== change.id),
+          active,
           seedSeq: state.seedSeq,
+          paused,
         };
       }
       case 'dispatch': {
@@ -218,7 +321,13 @@ export function applyUserScheduleProjection(
           nextActive = state.active.filter((entry) => entry.id !== change.id);
         }
         if (nextActive === state.active) return state;
-        return { sessionId: state.sessionId, owned: state.owned, active: nextActive, seedSeq: state.seedSeq };
+        return {
+          sessionId: state.sessionId,
+          owned: state.owned,
+          active: nextActive,
+          seedSeq: state.seedSeq,
+          paused: state.paused,
+        };
       }
       /* c8 ignore next 2 -- decodeScheduleChange 是闭包联合 */
       default:
@@ -233,15 +342,16 @@ function seedIsBefore(state: UserScheduleProjectionState, event: SessionEvent): 
   return state.seedSeq >= 0 && typeof event.seq === 'number' && event.seq < state.seedSeq;
 }
 
-/** 投影 view：只暴露用户创建的、当前活动的记录。 */
+/** 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。 */
 export function viewUserScheduleProjection(
   state: UserScheduleProjectionState,
 ): UserScheduleProjectionValue {
-  const schedules = state.active
+  const active = state.active
     .filter((record) => state.owned.includes(record.id))
     .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt))
-    .map(wireItemOf);
-  return { schedules };
+    .map((record) => wireItemOf(record, state.sessionId));
+  const paused = state.paused.map(pausedWireItemOf);
+  return { schedules: [...active, ...paused] };
 }
 
 /**
@@ -262,6 +372,6 @@ export const userSchedulesProjectionUnit = {
     viewSchema: userSchedulesSchema,
     view: viewUserScheduleProjection,
   },
-  // v3：状态新增 sessionId + 所有权改走 sidecar（init 装载）；旧缓存行按版本丢弃
-  stateVersion: 3,
+  // v3：sessionId + 所有权 sidecar；v4：paused[] 镜像（暂停/恢复）
+  stateVersion: 4,
 } as const;

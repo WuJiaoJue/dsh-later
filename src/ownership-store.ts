@@ -44,13 +44,37 @@ export interface OwnedEntry {
   readonly delivery: UserScheduleDelivery;
   /** 创建时刻（epoch ms，诊断用）。 */
   readonly createdAt: number;
+  /**
+   * 稳定插件身份（跨 pause/resume/日志 id 变更）。创建时生成；
+   * 旧条目可缺省（wire 回退用 scheduleId）。
+   */
+  readonly uid?: string;
 }
 
-/** sidecar 文件形状（version 1）。 */
+/** 暂停留档（仅 kind==='after'；不进会话日志）。 */
+export interface PausedEntry {
+  /** 稳定身份；resume 后仍用此 uid。 */
+  readonly uid: string;
+  readonly prompt: string;
+  readonly delivery: UserScheduleDelivery;
+  readonly kind: 'after';
+  /** 暂停瞬间的剩余秒数（resume 时 after_seconds）。 */
+  readonly remainingSeconds: number;
+  /** 原目标时刻（仅展示「原点 HH:MM」）。 */
+  readonly originalScheduledAt: string;
+  readonly originalAfterSeconds?: number;
+  /** 暂停前的日志 schedule id（审计/关联）。 */
+  readonly lastScheduleId: string;
+  readonly pausedAt: number;
+}
+
+/** sidecar 文件形状（version 2；v1 读入时补空 paused）。 */
 interface OwnershipFile {
-  readonly version: 1;
+  readonly version: 1 | 2;
   /** schedule id → 所有权记录。 */
   readonly entries: Record<string, OwnedEntry>;
+  /** uid → 暂停留档（v1 无此字段）。 */
+  readonly paused?: Record<string, PausedEntry>;
 }
 
 /** 解析状态目录（优先级见模块注释）。 */
@@ -124,7 +148,7 @@ function fileOf(sessionId: string): string {
 }
 
 function emptyFile(): OwnershipFile {
-  return { version: 1, entries: {} };
+  return { version: 2, entries: {}, paused: {} };
 }
 
 interface CacheRow {
@@ -154,13 +178,19 @@ function readFresh(sessionId: string): OwnershipFile {
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
-      (parsed as { version?: unknown }).version !== 1 ||
+      ((parsed as { version?: unknown }).version !== 1 &&
+        (parsed as { version?: unknown }).version !== 2) ||
       typeof (parsed as { entries?: unknown }).entries !== 'object' ||
       (parsed as { entries?: unknown }).entries === null
     ) {
       throw new Error('unexpected shape');
     }
-    const file = parsed;
+    // v1 → v2：补空 paused，写回时统一升到 2
+    const file: OwnershipFile = {
+      version: 2,
+      entries: parsed.entries,
+      paused: (parsed as { paused?: Record<string, PausedEntry> }).paused ?? {},
+    };
     cache.set(sessionId, { mtimeMs: stat.mtimeMs, size: stat.size, file });
     return file;
   } catch (error) {
@@ -228,13 +258,29 @@ function safeName(sessionId: string): string {
   return sessionId.replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
-/** 记录（新增或覆盖）一条所有权；幂等。 */
-export function recordOwnership(sessionId: string, id: string, delivery: UserScheduleDelivery): void {
-  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof id !== 'string' || id.length === 0) return;
+/** 生成稳定插件 uid（pause/resume 跨日志 id 变更）。 */
+export function newTaskUid(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `uid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 记录（新增或覆盖）一条所有权；幂等。仅显式传入 `uid` 时写入稳定身份。 */
+export function recordOwnership(
+  sessionId: string,
+  id: string,
+  delivery: UserScheduleDelivery,
+  uid?: string,
+): OwnedEntry {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof id !== 'string' || id.length === 0) {
+    return uid !== undefined ? { delivery, createdAt: Date.now(), uid } : { delivery, createdAt: Date.now() };
+  }
   const file = readFresh(sessionId);
   const entries: Record<string, OwnedEntry> = { ...file.entries };
-  entries[id] = { delivery, createdAt: Date.now() };
-  writeThrough(sessionId, { version: 1, entries });
+  const nextUid = uid ?? entries[id]?.uid;
+  const entry: OwnedEntry =
+    nextUid !== undefined ? { delivery, createdAt: Date.now(), uid: nextUid } : { delivery, createdAt: Date.now() };
+  entries[id] = entry;
+  writeThrough(sessionId, { version: 2, entries, paused: file.paused ?? {} });
+  return entry;
 }
 
 /** 撤销一条所有权；幂等（不存在时无操作）。 */
@@ -244,7 +290,58 @@ export function removeOwnership(sessionId: string, id: string): void {
   if (!Object.prototype.hasOwnProperty.call(file.entries, id)) return;
   const entries: Record<string, OwnedEntry> = { ...file.entries };
   delete entries[id];
-  writeThrough(sessionId, { version: 1, entries });
+  writeThrough(sessionId, { version: 2, entries, paused: file.paused ?? {} });
+}
+
+/** 按 uid 找当前仍 active 的 schedule id（缺失 undefined）。 */
+export function findScheduleIdByUid(sessionId: string, uid: string): string | undefined {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof uid !== 'string') return undefined;
+  for (const [id, entry] of Object.entries(readFresh(sessionId).entries)) {
+    if (entry.uid === uid) return id;
+  }
+  return undefined;
+}
+
+/** 全部暂停留档（uid → entry）。 */
+export function allPaused(sessionId: string): Readonly<Record<string, PausedEntry>> {
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return {};
+  return readFresh(sessionId).paused ?? {};
+}
+
+/** 一条暂停留档。 */
+export function getPaused(sessionId: string, uid: string): PausedEntry | undefined {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof uid !== 'string') return undefined;
+  return (readFresh(sessionId).paused ?? {})[uid];
+}
+
+/** 按暂停前 schedule id 找留档（pause 刚写完、投影 fold 见 delete 时用）。 */
+export function findPausedByScheduleId(sessionId: string, scheduleId: string): PausedEntry | undefined {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof scheduleId !== 'string') return undefined;
+  for (const entry of Object.values(readFresh(sessionId).paused ?? {})) {
+    if (entry.lastScheduleId === scheduleId) return entry;
+  }
+  return undefined;
+}
+
+/** 写入/覆盖一条暂停留档。 */
+export function recordPaused(sessionId: string, entry: PausedEntry): void {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof entry.uid !== 'string') return;
+  const file = readFresh(sessionId);
+  writeThrough(sessionId, {
+    version: 2,
+    entries: file.entries,
+    paused: { ...(file.paused ?? {}), [entry.uid]: entry },
+  });
+}
+
+/** 移除一条暂停留档；幂等。 */
+export function removePaused(sessionId: string, uid: string): void {
+  if (typeof sessionId !== 'string' || sessionId.length === 0 || typeof uid !== 'string') return;
+  const file = readFresh(sessionId);
+  const paused = { ...(file.paused ?? {}) };
+  if (!Object.prototype.hasOwnProperty.call(paused, uid)) return;
+  delete paused[uid];
+  writeThrough(sessionId, { version: 2, entries: file.entries, paused });
 }
 
 /** 测试辅助：清空进程内缓存（不删文件）。 */

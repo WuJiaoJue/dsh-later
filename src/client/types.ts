@@ -13,6 +13,9 @@ export interface ClientSchedule {
   readonly scheduled_at: string;
   readonly created_at?: string;
   readonly delivery_mode: 'session-local';
+  readonly status?: 'active' | 'paused';
+  readonly remaining_seconds?: number;
+  readonly schedule_id?: string;
 }
 
 /** `userSchedules` 投影值。 */

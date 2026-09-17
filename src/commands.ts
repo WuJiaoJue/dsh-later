@@ -19,6 +19,8 @@ import {
   userScheduleDelete,
   userScheduleEditPrompt,
   userScheduleList,
+  userSchedulePause,
+  userScheduleResume,
   resolvePromptLimits,
 } from './user-tools.js';
 import type { PromptLimits } from './user-tools.js';
@@ -504,6 +506,52 @@ export function userScheduleCommands(
     },
   };
 
+  /** 暂停 after 提醒：sidecar 留档 + 日志 delete（GUI ⏸）。 */
+  const pause: CommandDefinition = {
+    name: `${PREFIX}-pause`,
+    description: '暂停一条 after 类定时提醒（仅 GUI 内部通道；已到点不可暂停）。',
+    recordInput: false,
+    handler: async (invocation: CommandInvocation): Promise<CommandResult> => {
+      const parsed = parsePayload(invocation.rawInput);
+      if (!parsed.ok) return renderError(parsed.text);
+      const id = (parsed.value as Record<string, unknown>)['id'];
+      const result = await userSchedulePause(id, invocation.agent, ctx);
+      if (!result.ok) {
+        return { kind: 'error', text: `${result.code}: ${result.message}` };
+      }
+      try {
+        onUserChange?.(invocation.agent);
+      } catch {
+        /* 通知失败不影响命令成功结果 */
+      }
+      return { kind: 'success', text: JSON.stringify(result) };
+    },
+  };
+
+  /** 恢复暂停项：after_seconds=remaining 重建；uid 不变、日志 id 会变。 */
+  const resume: CommandDefinition = {
+    name: `${PREFIX}-resume`,
+    description: '恢复一条已暂停的 after 提醒（仅 GUI 内部通道）。',
+    recordInput: false,
+    handler: async (invocation: CommandInvocation): Promise<CommandResult> => {
+      const parsed = parsePayload(invocation.rawInput);
+      if (!parsed.ok) return renderError(parsed.text);
+      const uid = (parsed.value as Record<string, unknown>)['uid']
+        ?? (parsed.value as Record<string, unknown>)['id'];
+      const { maxSchedules } = resolveSettings();
+      const result = await userScheduleResume(uid, invocation.agent, ctx, maxSchedules);
+      if (!result.ok) {
+        return { kind: 'error', text: `${result.code}: ${result.message}` };
+      }
+      try {
+        onUserChange?.(invocation.agent);
+      } catch {
+        /* 通知失败不影响命令成功结果 */
+      }
+      return { kind: 'success', text: JSON.stringify(result) };
+    },
+  };
+
   // 用户主动插话（GUI「插话发送」按钮）：把已到点的 reminder 立即 steer 进 agent。
   // 仅 one-shot 支持；every 类提醒因 batch framing 需要更多 plumbing 暂未开放。
   const steer: CommandDefinition = {
@@ -608,7 +656,7 @@ export function userScheduleCommands(
     handler: buildQuickHandler('user'),
   };
 
-  return [create, list, del, edit, steer, quick, later];
+  return [create, list, del, edit, pause, resume, steer, quick, later];
 }
 
 /** 注册三个命令，返回统一 disposer。 */

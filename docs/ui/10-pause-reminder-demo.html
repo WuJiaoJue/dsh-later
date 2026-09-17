@@ -125,12 +125,238 @@
   }
   .ss-dock-bar-fill { position: relative; z-index: 1; height: 100%; border-radius: 999px; background: var(--brand); transition: width 1s linear; }
   .ss-dock-bar-divider { position: absolute; inset: 0; pointer-events: none; background-repeat: no-repeat; }
-  /* 暂停：进度条静止（含条纹停放纹理），语义 = 「冻结但保留」 */
-  .ss-dock-row.ss-paused .ss-dock-bar-fill {
+  /* 暂停：进度条静止。5 种视觉变体，由根节点 data-bar-style 切换 */
+  .ss-dock-row.ss-paused .ss-dock-row-time { color: var(--text-dim); }
+  .ss-dock-row.ss-paused .ss-dock-row-prompt { color: var(--text-dim); }
+  .ss-dock-row.ss-paused .ss-dock-bar-fill { transition: none; }
+
+  /* 1. hatch — 斜纹停放（原默认） */
+  [data-bar-style="hatch"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
     background: repeating-linear-gradient(115deg, var(--text-dim) 0 5px, transparent 5px 10px), var(--line-strong);
-    transition: none;
+    opacity: .9;
   }
-  .ss-dock-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+
+  /* 2. ghost — 幽灵轮廓：实心变描边，宽度仍表示冻结进度 */
+  [data-bar-style="ghost"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  [data-bar-style="ghost"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--text-dim);
+    opacity: .75;
+  }
+  [data-bar-style="ghost"] .ss-dock-row.ss-paused .ss-dock-bar::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+    background: repeating-linear-gradient(90deg, transparent 0 3px, rgba(128,128,128,.12) 3px 4px);
+    pointer-events: none;
+  }
+
+  /* 3. blocks — 分段块：离散「电量格」冻结 */
+  [data-bar-style="blocks"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: repeating-linear-gradient(90deg, var(--line) 0 10px, transparent 10px 12px);
+  }
+  [data-bar-style="blocks"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: repeating-linear-gradient(90deg, var(--text-dim) 0 10px, transparent 10px 12px);
+    opacity: .8;
+  }
+
+  /* 4. mute — 降饱和软冻结：品牌色几乎褪成灰蓝，最克制 */
+  [data-bar-style="mute"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--brand) 22%, var(--line-strong));
+    opacity: .95;
+    filter: saturate(.25);
+  }
+  [data-bar-style="mute"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: var(--line);
+  }
+
+  /* 5. scan — 水平扫描线静止：细横线叠在填充上 */
+  [data-bar-style="scan"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.22) 0 1px, transparent 1px 3px),
+      color-mix(in srgb, var(--text-dim) 70%, var(--line-strong));
+    opacity: .9;
+  }
+
+  /* ===== 以下为更贴 DSH 宿主语言的变体 ===== */
+
+  /* 6. brand-hold — 暂停按钮同色系：琥珀 hold，对齐 warn/暂停动作 */
+  [data-bar-style="brand-hold"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--warn) 55%, var(--line-strong));
+    opacity: .88;
+  }
+  [data-bar-style="brand-hold"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: color-mix(in srgb, var(--warn-soft) 70%, var(--line));
+  }
+
+  /* 7. orb-cap — presence 点隐喻：干净淡填充 + 进度头小圆帽 */
+  [data-bar-style="orb-cap"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--brand) 28%, var(--line-strong));
+    border-radius: 999px 4px 4px 999px;
+    position: relative;
+  }
+  [data-bar-style="orb-cap"] .ss-dock-row.ss-paused .ss-dock-bar-fill::after {
+    content: ''; position: absolute; right: -3px; top: 50%;
+    width: 8px; height: 8px; border-radius: 999px;
+    transform: translateY(-50%);
+    background: color-mix(in srgb, var(--brand) 55%, var(--text-dim));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+
+  /* 8. surface-sunk — 宿主表面语言：轨道抬升、填充下沉灰蓝 */
+  [data-bar-style="surface-sunk"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: color-mix(in srgb, var(--tip) 80%, var(--line));
+    box-shadow: inset 0 1px 0 rgba(0,0,0,.04);
+  }
+  [data-bar-style="surface-sunk"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--brand) 18%, var(--bg-soft));
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, .12);
+    opacity: .95;
+  }
+
+  /* 9. chip — host badge/chip 语言：品牌淡底 + 描边，像禁用主按钮 */
+  [data-bar-style="chip"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 28%, var(--line));
+  }
+  [data-bar-style="chip"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--brand-soft) 85%, var(--brand));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+
+  /* 10. ticks — 像素时钟/刻度：每 10% 一刻度，冻结成「表盘」 */
+  [data-bar-style="ticks"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background:
+      repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--line-strong) calc(10% - 1px) 10%);
+  }
+  [data-bar-style="ticks"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), color-mix(in srgb, var(--brand) 40%, var(--text-dim)) calc(10% - 1px) 10%),
+      color-mix(in srgb, var(--brand) 22%, transparent);
+    opacity: .95;
+  }
+
+  /* 11. pixel-clock — 侧栏 presence 像素钟语言：方块节拍 + 品牌点 */
+  [data-bar-style="pixel-clock"] .ss-dock-row.ss-paused .ss-dock-bar {
+    height: 8px;
+    background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 6px);
+    border-radius: 3px;
+  }
+  [data-bar-style="pixel-clock"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background:
+      repeating-linear-gradient(90deg,
+        color-mix(in srgb, var(--brand) 45%, var(--text-dim)) 0 4px,
+        transparent 4px 6px);
+  }
+
+  /* 12. dual-tone — 双色：已过=淡品牌实心 / 未到=虚线轨道（强调“停在这一格”） */
+  [data-bar-style="dual-tone"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background:
+      repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 10px);
+  }
+  [data-bar-style="dual-tone"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: color-mix(in srgb, var(--brand) 35%, var(--text-dim));
+    opacity: .82;
+  }
+
+  /* ===== 冰冻系 ===== */
+
+  /* 13. frost — 霜雾冰蓝：冷色渐变 + 细霜点 */
+  [data-bar-style="frost"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: linear-gradient(180deg, #dbeafe 0%, #e2e8f0 100%);
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, .55);
+  }
+  [data-bar-style="frost"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      radial-gradient(circle at 20% 40%, rgba(255,255,255,.55) 0 1px, transparent 1.5px),
+      radial-gradient(circle at 55% 70%, rgba(255,255,255,.4) 0 1px, transparent 1.5px),
+      radial-gradient(circle at 80% 30%, rgba(255,255,255,.5) 0 1px, transparent 1.5px),
+      linear-gradient(90deg, #93c5fd 0%, #bfdbfe 55%, #dbeafe 100%);
+    box-shadow: 0 0 6px rgba(147, 197, 253, .35);
+    opacity: .95;
+  }
+
+  /* 14. ice-crystal — 冰晶：冷蓝底 + 斜向晶格 + 高光 */
+  [data-bar-style="ice-crystal"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: color-mix(in srgb, #e0f2fe 80%, #cbd5e1);
+  }
+  [data-bar-style="ice-crystal"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      repeating-linear-gradient(45deg,
+        rgba(255,255,255,.22) 0 1px,
+        transparent 1px 5px),
+      repeating-linear-gradient(-45deg,
+        rgba(56, 189, 248, .18) 0 1px,
+        transparent 1px 7px),
+      linear-gradient(180deg, #67e8f9 0%, #38bdf8 40%, #0ea5e9 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.45),
+      0 0 8px rgba(56, 189, 248, .25);
+  }
+
+  /* 15. frost-crack — 冰裂：冻结蓝 + 细裂纹折线（多段 background） */
+  [data-bar-style="frost-crack"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: #e2e8f0;
+  }
+  [data-bar-style="frost-crack"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      linear-gradient(105deg, transparent 40%, rgba(255,255,255,.35) 42%, transparent 44%),
+      linear-gradient(75deg, transparent 62%, rgba(14, 165, 233, .35) 63%, transparent 65%),
+      linear-gradient(120deg, transparent 28%, rgba(255,255,255,.25) 29%, transparent 31%),
+      linear-gradient(180deg, #7dd3fc 0%, #38bdf8 50%, #0284c7 100%);
+    opacity: .92;
+  }
+
+  /* 16. freezer-glass — 冷冻玻璃：半透明磨砂 + 内高光（host 面板感 × 冰） */
+  [data-bar-style="freezer-glass"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: rgba(226, 232, 240, .9);
+    backdrop-filter: blur(0px);
+  }
+  [data-bar-style="freezer-glass"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 45%),
+      linear-gradient(90deg,
+        rgba(125, 211, 252, .55) 0%,
+        rgba(186, 230, 253, .7) 50%,
+        rgba(224, 242, 254, .85) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.7),
+      inset 0 -1px 0 rgba(14, 165, 233, .12);
+    opacity: .9;
+  }
+
+  /* 17. deep-freeze — 深冻：饱和冰蓝实心 + 边缘冷光，最醒目冰感 */
+  [data-bar-style="deep-freeze"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: color-mix(in srgb, #0c4a6e 15%, var(--line));
+  }
+  [data-bar-style="deep-freeze"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: linear-gradient(90deg, #0ea5e9 0%, #38bdf8 45%, #67e8f9 100%);
+    box-shadow:
+      0 0 10px rgba(14, 165, 233, .45),
+      inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  [data-bar-style="deep-freeze"] .ss-dock-row.ss-paused .ss-dock-row-countdown.ss-paused {
+    color: #0284c7;
+  }
+
+  /* 18. hoarfrost — 白霜：几乎无色，只在边缘结霜（最克制冰） */
+  [data-bar-style="hoarfrost"] .ss-dock-row.ss-paused .ss-dock-bar {
+    background: var(--line);
+  }
+  [data-bar-style="hoarfrost"] .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.7) 0 1px, transparent 1px),
+      linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(203, 213, 225, .9),
+      0 0 0 1px rgba(255,255,255,.4);
+    opacity: .95;
+  }
+  .ss-dock-actions { display: flex; align-items: center; gap: 10px; flex: none; min-width: 112px; justify-content: flex-end; }
+  .ss-dock-action.is-disabled { opacity: .35; cursor: default; pointer-events: none; }
   .ss-dock-action {
     display: grid; place-items: center; width: 28px; height: 28px; padding: 0; flex: none;
     border: none; border-radius: 999px; background: none; cursor: pointer; color: var(--text-dim);
@@ -184,6 +410,12 @@
   th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   ul.plain { margin: 6px 0 0; padding-left: 20px; color: var(--text-dim); }
   ul.plain li { margin: 3px 0; }
+  .style-notes {
+    margin: 0 0 12px; padding: 8px 12px; border-radius: 10px;
+    background: var(--bg-soft); border: 1px solid var(--line);
+    color: var(--text-dim); font-size: 12px; line-height: 1.55;
+  }
+  .style-notes b { color: var(--text); font-weight: 500; }
 </style>
 </head>
 <body>
@@ -202,8 +434,32 @@
     <button type="button" data-plan="C" aria-pressed="false">方案 C · 长按记忆式缓发</button>
   </div>
 
+  <h2>暂停进度条样式 <span class="tag">点一条任务的 ⏸ 再切换</span></h2>
+  <p class="lede" style="margin-top:0">先暂停任意任务，再点下面切换条形视觉。宽度始终表示「冻结时的剩余比例」。</p>
+  <div class="switcher" id="bar-style-switcher" role="group" aria-label="暂停进度条样式">
+    <button type="button" data-bar-style="hatch" aria-pressed="true">1 斜纹</button>
+    <button type="button" data-bar-style="ghost" aria-pressed="false">2 幽灵</button>
+    <button type="button" data-bar-style="blocks" aria-pressed="false">3 电量格</button>
+    <button type="button" data-bar-style="mute" aria-pressed="false">4 软冻结</button>
+    <button type="button" data-bar-style="scan" aria-pressed="false">5 扫描线</button>
+    <button type="button" data-bar-style="brand-hold" aria-pressed="false">6 琥珀 hold</button>
+    <button type="button" data-bar-style="orb-cap" aria-pressed="false">7 presence 帽</button>
+    <button type="button" data-bar-style="surface-sunk" aria-pressed="false">8 表面下沉</button>
+    <button type="button" data-bar-style="chip" aria-pressed="false">9 chip 徽章</button>
+    <button type="button" data-bar-style="ticks" aria-pressed="false">10 刻度表盘</button>
+    <button type="button" data-bar-style="pixel-clock" aria-pressed="false">11 像素钟</button>
+    <button type="button" data-bar-style="dual-tone" aria-pressed="false">12 双色停格</button>
+    <button type="button" data-bar-style="frost" aria-pressed="false">13 霜雾</button>
+    <button type="button" data-bar-style="ice-crystal" aria-pressed="false">14 冰晶</button>
+    <button type="button" data-bar-style="frost-crack" aria-pressed="false">15 冰裂</button>
+    <button type="button" data-bar-style="freezer-glass" aria-pressed="false">16 冷冻玻璃</button>
+    <button type="button" data-bar-style="deep-freeze" aria-pressed="false">17 深冻蓝光</button>
+    <button type="button" data-bar-style="hoarfrost" aria-pressed="false">18 白霜</button>
+  </div>
+  <div class="style-notes" id="bar-style-note"></div>
+
   <div class="panel-demo">
-    <div class="ss-dock-root">
+    <div class="ss-dock-root" id="dock-root" data-bar-style="hatch">
       <div class="ss-dock-body">
         <button type="button" class="ss-dock-header" id="header">
           <span class="ss-dock-lead" aria-hidden="true">
@@ -248,7 +504,7 @@
       </tr>
       <tr>
         <td>宿主<b>重启</b>后</td>
-        <td colspan="2">日志里只有 delete、sidecar 里有记录：故意「不按 create 恢复」→ 暂停项不会被误触发。<b>但会掉出列表</b>（行内状态不跨进程持久）</td>
+        <td colspan="2">日志里只有 delete、sidecar 里有记录：故意「不按 create 恢复」→ 暂停项不会被误触发。<b>本 demo 用内存模拟</b>；真机需 sidecar + 投影 paused[] 才能跨进程回到 dock 原位</td>
         <td>不存在暂停项</td>
       </tr>
       <tr>
@@ -286,8 +542,8 @@
   <div class="note">
     动词拆成两条命令，纯 host、零 UI 阻塞：<br />
     <code>/user-schedule-pause {"{id}"}</code> → 返回 <code>{"{ok,id,remaining_seconds,scheduled_at}"}</code>，host 把 <code>{prompt, at/after, delivery}</code> 存进 sidecar<br />
-    <code>/user-schedule-resume {"{id}"}</code> → 重建任务并把新 id 回给客户端（dock 行短暂显示「已恢复」，投影回流后替换）<br />
-    面板里暂停项需要一份「暂停清单」投影：投影 state 数组加 <code>paused[]</code> + <code>stateVersion: 4</code>（已确认部署不是 canary，不满足 canary 约束）。
+    <code>/user-schedule-resume {"{id}"}</code> → 重建任务并把新 id 回给客户端（同位替换 dock 行并解冻进度条）<br />
+    <b>UI 定稿：原地冻结、不拆分区</b>——暂停后行留在 dock 原位，进度条停在冻结宽度并呈条纹，文案改「已暂停」；投影需把 <code>paused[]</code> 并入 wire（<code>stateVersion: 4</code>），否则 delete 后行会消失。
   </div>
 </div>
 
@@ -373,18 +629,20 @@
 
   function render() {
     listEl.innerHTML = '';
-    countEl.textContent = tasks.length + ' 条定时提醒';
-    headEl.textContent = '已设定 (' + tasks.length + ')';
+    const pausedCount = plan !== 'C' ? tasks.filter((task) => task.paused).length : 0;
+    countEl.textContent = tasks.length + ' 条定时提醒' + (pausedCount ? '（含 ' + pausedCount + ' 已暂停）' : '');
+    headEl.textContent = '已设定 (' + tasks.length + (pausedCount ? ' · 已暂停 ' + pausedCount : '') + ')';
 
     if (tasks.length === 0) {
       panelEl.innerHTML = '<li class="ss-empty">暂无定时任务</li>';
     }
 
-    tasks.forEach((task, index) => {
-      const left = task.scheduledAt - now;
-      const overdue = left <= 0;
+    tasks.forEach((task) => {
+      const isPaused = plan !== 'C' && task.paused === true;
+      const left = isPaused ? (task.frozenLeft ?? 0) : task.scheduledAt - now;
+      const overdue = !isPaused && left <= 0;
       const li = document.createElement('li');
-      li.className = 'ss-dock-row' + (index > 0 ? '' : '');
+      li.className = 'ss-dock-row' + (isPaused ? ' ss-paused' : '');
       li.dataset.id = task.id;
 
       const actions = [];
@@ -392,47 +650,58 @@
         actions.push(btn('ss-dock-action ss-dock-action-hold' + (held.has(task.id) ? ' ss-active' : ''), ICONS.hold,
           '长按缓发（按住 600ms 冻结剩余时长）', 'hold', task.id));
       } else {
-        actions.push(btn('ss-dock-action', ICONS.edit, '编辑提醒', 'edit', task.id));
-        actions.push(btn('ss-dock-action ss-dock-action-pause', ICONS.pause, '暂停提醒', 'pause', task.id));
+        // 暂停时保留同等按钮槽位，避免操作区变窄把进度条“拉长”
+        actions.push(btn('ss-dock-action' + (isPaused ? ' is-disabled' : ''), ICONS.edit,
+          isPaused ? '暂停中不可编辑' : '编辑提醒', isPaused ? 'noop' : 'edit', task.id));
+        actions.push(isPaused
+          ? btn('ss-dock-action ss-dock-action-resume ss-active', ICONS.play, '恢复提醒', 'resume', task.id)
+          : btn('ss-dock-action ss-dock-action-pause', ICONS.pause, '暂停提醒', 'pause', task.id));
       }
       actions.push(btn('ss-dock-action', ICONS.del, '删除提醒', 'del', task.id));
-      if (task.kind !== 'every') {
-        actions.push(btn('ss-dock-action ss-dock-action-steer', ICONS.send, '插话发送', 'steer', task.id));
+      if (plan !== 'C' && task.kind !== 'every') {
+        actions.push(btn('ss-dock-action ss-dock-action-steer' + (isPaused ? ' is-disabled' : ''), ICONS.send,
+          isPaused ? '暂停中不可插话' : '插话发送', isPaused ? 'noop' : 'steer', task.id));
       }
+
+      const countdownText = isPaused
+        ? t.paused
+        : (overdue ? t.dueAnyMoment : t.countdownLeft + ' ' + cd(left));
 
       li.innerHTML =
         '<div class="ss-dock-preview">' +
           '<div class="ss-dock-row-line">' +
             '<span class="ss-dock-row-time">' + hhmm(task.scheduledAt) + '</span>' +
-            '<span class="ss-dock-row-countdown' + (overdue ? ' ss-due' : '') + '">' +
-              (overdue ? t.dueAnyMoment : t.countdownLeft + ' ' + cd(left)) +
+            '<span class="ss-dock-row-countdown' + (overdue ? ' ss-due' : '') + (isPaused ? ' ss-paused' : '') + '">' +
+              countdownText +
             '</span>' +
             '<span class="ss-dock-row-prompt" title="' + esc(task.prompt) + '">' + esc(task.prompt) + '</span>' +
           '</div>' +
           bar(totalMsOf(task), Math.max(left, 0)) +
-          (held.has(task.id) ? '<span class="ss-dock-state">' + t.pausedLong.replace('HH:MM', hhmm(task.scheduledAt)) + '</span>' : '') +
+          (isPaused
+            ? '<span class="ss-dock-state">' + t.pausedLong.replace('HH:MM', hhmm(task.scheduledAt)) + '</span>'
+            : (held.has(task.id) ? '<span class="ss-dock-state">' + t.pausedLong.replace('HH:MM', hhmm(task.scheduledAt)) + '</span>' : '')) +
         '</div>' +
         '<div class="ss-dock-actions">' + actions.join('') + '</div>';
       listEl.appendChild(li);
     });
 
-    // 面板里的暂停清单
-    if (plan !== 'C') {
-      const pausedItems = [...paused.values()];
-      panelEl.innerHTML = tasks.map((task) =>
-        '<li class="ss-task"><span class="ss-dot ' + (task.scheduledAt - now <= 0 ? 'overdue' : 'scheduled') + '"></span>' +
-        '<span class="ss-task-main"><span class="ss-task-time">' + hhmm(task.scheduledAt) + ' · ' + cd(task.scheduledAt - now) + '</span><br />' +
-        '<span class="ss-task-prompt">' + esc(task.prompt) + '</span></span>' +
-        '<button type="button" class="ss-task-btn" data-act="panel-pause" data-id="' + task.id + '" title="暂停提醒">' + ICONS.pause + '</button>' +
-        '<button type="button" class="ss-task-btn" data-act="panel-del" data-id="' + task.id + '" title="删除提醒">✕</button></li>'
-      ).join('') + pausedItems.map((entry) =>
-        '<li class="ss-task"><span class="ss-dot paused"></span>' +
-        '<span class="ss-task-main"><span class="ss-task-time">' + hhmm(entry.scheduledAt) + ' · ' + t.paused + '</span><br />' +
-        '<span class="ss-task-prompt">' + esc(entry.prompt) + '<span class="ss-task-paused-badge">' + t.paused + '</span></span></span>' +
-        '<button type="button" class="ss-task-btn" data-act="panel-resume" data-id="' + entry.id + '" title="恢复提醒">' + ICONS.play + '</button>' +
-        '<button type="button" class="ss-task-btn" data-act="panel-drop" data-id="' + entry.id + '" title="删除提醒">✕</button></li>'
-      ).join('');
-      headEl.textContent = '已设定 (' + tasks.length + (pausedItems.length ? ' + 已暂停 ' + pausedItems.length : '') + ')';
+    // 面板：同一列表，不拆分区；暂停项原地打徽标
+    if (plan !== 'C' && tasks.length > 0) {
+      panelEl.innerHTML = tasks.map((task) => {
+        const isPaused = task.paused === true;
+        const timeLabel = isPaused
+          ? hhmm(task.scheduledAt) + ' · ' + t.paused
+          : hhmm(task.scheduledAt) + ' · ' + cd(task.scheduledAt - now);
+        return '<li class="ss-task"><span class="ss-dot ' + (isPaused ? 'paused' : (task.scheduledAt - now <= 0 ? 'overdue' : 'scheduled')) + '"></span>' +
+        '<span class="ss-task-main"><span class="ss-task-time">' + timeLabel + '</span><br />' +
+        '<span class="ss-task-prompt">' + esc(task.prompt) +
+          (isPaused ? '<span class="ss-task-paused-badge">' + t.paused + '</span>' : '') +
+        '</span></span>' +
+        (isPaused
+          ? '<button type="button" class="ss-task-btn" data-act="panel-resume" data-id="' + task.id + '" title="恢复提醒">' + ICONS.play + '</button>'
+          : '<button type="button" class="ss-task-btn" data-act="panel-pause" data-id="' + task.id + '" title="暂停提醒">' + ICONS.pause + '</button>') +
+        '<button type="button" class="ss-task-btn" data-act="panel-del" data-id="' + task.id + '" title="删除提醒">✕</button></li>';
+      }).join('');
     }
   }
 
@@ -444,30 +713,32 @@
 
   function find(id) { return tasks.find((task) => task.id === id); }
 
-  /** 方案 A/B：暂停 = 命令 + 日志 delete + sidecar 留档。 */
+  /** 方案 A/B：暂停 = 命令 + 日志 delete + sidecar 留档；UI 上行留在 dock 原地冻结进度条。 */
   function pause(id, silent) {
     const task = find(id);
-    if (!task) return;
+    if (!task || task.paused) return;
     if (task.scheduledAt - now <= 0 && !silent) {
       log('err', 'host: user-schedule-pause → already_due：' + id + ' 已到期，无法暂停（提示：请先删除，或到点后由 /later 重发）');
       return;
     }
+    const frozenLeft = Math.max(0, task.scheduledAt - Date.now());
+    task.paused = true;
+    task.frozenLeft = frozenLeft;
     paused.set(id, {
       id, prompt: task.prompt, scheduledAt: task.scheduledAt, kind: task.kind,
       afterSeconds: task.afterSeconds, everySeconds: task.everySeconds,
-      remainingSeconds: Math.max(0, Math.round((task.scheduledAt - Date.now()) / 1000)),
+      remainingSeconds: Math.round(frozenLeft / 1000),
       delivery: 'context',
     });
-    tasks = tasks.filter((task) => task.id !== id);
     if (!silent) {
       log('cmd', '/user-schedule-pause {"id":"' + id + '"}');
       log('ev', 'host → sidecar 记录 {status:\'paused\'} · 会话日志 append schedule/change:delete id=' + id);
-      log('dim', '投影回流：' + id + ' 从 dock / 面板活动列表移除；' + id + ' 进入「已暂停」清单');
+      log('dim', 'UI：行留在 dock 原位，进度条冻结为条纹并显示「已暂停」（不拆分区）');
       render();
     }
   }
 
-  /** 方案 A/B：恢复 = create（A 过期顺延，B 原样）。 */
+  /** 方案 A/B：恢复 = create（A 过期顺延，B 原样）；同位替换 dock 行。 */
   function resume(id) {
     const entry = paused.get(id);
     if (!entry) return;
@@ -483,16 +754,20 @@
       scheduledAt: keepAt, createdAt: Date.now(),
     };
     paused.delete(id);
-    tasks = [...tasks, created].sort((a, b) => a.scheduledAt - b.scheduledAt);
+    const idx = tasks.findIndex((task) => task.id === id);
+    if (idx >= 0) tasks.splice(idx, 1, created);
+    else tasks.push(created);
+    tasks.sort((a, b) => a.scheduledAt - b.scheduledAt);
     log('cmd', '/user-schedule-resume {"id":"' + id + '"}');
     log('ev', 'host → 会话日志 append schedule/change:create ' + nextId + (rolled ? '（A：原定时刻已过 → 顺延到 +2 分钟）' : '（原定时刻仍有效，原样恢复）'));
-    log('dim', '注意：折叠保留 seenIds，恢复后的 id 变成 ' + nextId + '（' + id + ' 不复用）；sidecar 清掉旧条目');
+    log('dim', '注意：折叠保留 seenIds，恢复后的 id 变成 ' + nextId + '（' + id + ' 不复用）；sidecar 清掉旧条目；dock 行原位解冻');
     render();
   }
 
   function drop(id) {
     paused.delete(id);
-    log('cmd', '/user-schedule-delete {"id":"' + id + '"}（清掉暂停留档）');
+    tasks = tasks.filter((task) => task.id !== id);
+    log('cmd', '/user-schedule-delete {"id":"' + id + '"}（清掉暂停留档并移除行）');
     render();
   }
 
@@ -523,6 +798,7 @@
     if (!target) return;
     const act = target.dataset.act;
     const id = target.dataset.id;
+    if (act === 'noop') return;
     if (act === 'pause') pause(id);
     else if (act === 'panel-pause') pause(id);
     else if (act === 'resume' || act === 'panel-resume') resume(id);
@@ -570,7 +846,42 @@
     }
   });
 
-  document.querySelectorAll('.switcher button').forEach((button) => {
+  const BAR_STYLE_NOTES = {
+    hatch: '<b>1 斜纹停放</b>：灰底斜线，磁带停住感。对比最强，但略噪。',
+    ghost: '<b>2 幽灵轮廓</b>：实心变描边。最安静；暗色下对比偏低。',
+    blocks: '<b>3 分段电量格</b>：离散方块。工程感强；低高度易碎。',
+    mute: '<b>4 降饱和软冻结</b>：几乎无纹理。最克制，靠文案表意。',
+    scan: '<b>5 扫描线静止</b>：CRT 待机细横线。质感细，低 DPI 可能糊。',
+    'brand-hold': '<b>6 琥珀 hold</b>：对齐暂停按钮/warn 色语言。语义最直：「被按住了」；和品牌蓝主进度对比会跳色。',
+    'orb-cap': '<b>7 presence 帽</b>：淡品牌填充 + 进度头圆点，呼应侧栏时钟 orb。干净、有宿主辨识度（推荐试）。',
+    'surface-sunk': '<b>8 表面下沉</b>：宿主 surface/阴影语言。像凹槽停住，很「DSH 面板」；状态感偏弱，需靠文案补。',
+    'chip': '<b>9 chip 徽章</b>：品牌淡底描边，像禁用主按钮。UI 亲和；和「进度」隐喻略远。',
+    ticks: '<b>10 刻度表盘</b>：每 10% 一刻度。像仪表冻结；密集场景略吵。',
+    'pixel-clock': '<b>11 像素钟</b>：方块节拍，直接呼应侧栏 presence 像素钟。最「dsh-later 专属」；需略加高条（8px）。',
+    'dual-tone': '<b>12 双色停格</b>：已过实心 / 未到虚线。强调「停在这一格」；信息清楚但略工程。',
+    frost: '<b>13 霜雾</b>：冰蓝渐变 + 细霜点。冷感明确，仍偏克制（推荐试）。',
+    'ice-crystal': '<b>14 冰晶</b>：斜向晶格 + 高光。最「结冰」；略装饰，可能抢文案。',
+    'frost-crack': '<b>15 冰裂</b>：裂纹折线叠在冰蓝上。戏剧化，适合强调「硬冻结」。',
+    'freezer-glass': '<b>16 冷冻玻璃</b>：半透明磨砂 + 内高光。贴 host 面板语言的冰版（推荐试）。',
+    'deep-freeze': '<b>17 深冻蓝光</b>：饱和冰蓝 + 外发光。最醒目，像「电源指示被冻住」。',
+    hoarfrost: '<b>18 白霜</b>：几乎无色只结边霜。最安静的冰；状态感最弱。',
+  };
+
+  function setBarStyle(style) {
+    const root = document.getElementById('dock-root');
+    root.dataset.barStyle = style; // 产品定稿：hatch（斜纹停放）为默认/落地样式
+    document.querySelectorAll('#bar-style-switcher button').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.barStyle === style));
+    });
+    document.getElementById('bar-style-note').innerHTML = BAR_STYLE_NOTES[style] || '';
+  }
+
+  document.querySelectorAll('#bar-style-switcher button').forEach((button) => {
+    button.addEventListener('click', () => setBarStyle(button.dataset.barStyle));
+  });
+  setBarStyle('hatch');
+
+  document.querySelectorAll('.switcher button[data-plan]').forEach((button) => {
     button.addEventListener('click', () => {
       plan = button.dataset.plan;
       document.querySelectorAll('.switcher button').forEach((other) => {
@@ -588,7 +899,7 @@
   });
 
   setInterval(() => { now = Date.now(); render(); }, 1000);
-  log('dim', '准备就绪。默认方案 A：点行内 ⏸ 暂停一条，再点面板「已暂停」区里的 ▶ 恢复。');
+  log('dim', '准备就绪。先点 ⏸ 冻结一条，再用上方「暂停进度条样式」切换 5 种视觉。');
   render();
 })();
 </script>

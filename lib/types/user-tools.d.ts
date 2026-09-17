@@ -22,6 +22,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session';
 import { foldScheduleEvents } from '@deepseek-ai/dsh-schedule';
 import type { ScheduleRecord, ScheduleView } from '@deepseek-ai/dsh-schedule';
 import type { UserScheduleDelivery } from './domain.js';
+import type { PausedEntry } from './ownership-store.js';
 /** 单 session 用户任务上限（PRD：防滥用）。 */
 export declare const DEFAULT_MAX_SCHEDULES = 100;
 /**
@@ -53,7 +54,7 @@ export declare function validatePrompt(raw: unknown, limits: PromptLimits): {
     value: string;
 } | UserScheduleError;
 /** 用户工具稳定的闭包错误集合（在 dsh-schedule 闭包之上追加本插件专用码）。 */
-export type UserScheduleErrorCode = 'invalid_prompt' | 'invalid_selector' | 'invalid_time_zone' | 'not_future' | 'time_out_of_range' | 'frequency_too_high' | 'invalid_rule' | 'schedule_not_found' | 'already_overdue' | 'quota_exceeded' | 'persistence_uncertain' | 'internal_error';
+export type UserScheduleErrorCode = 'invalid_prompt' | 'invalid_selector' | 'invalid_time_zone' | 'not_future' | 'time_out_of_range' | 'frequency_too_high' | 'invalid_rule' | 'schedule_not_found' | 'already_overdue' | 'quota_exceeded' | 'persistence_uncertain' | 'unsupported_kind' | 'not_paused' | 'internal_error';
 /** 封闭错误值。 */
 export interface UserScheduleError {
     readonly ok: false;
@@ -81,6 +82,21 @@ export type UserScheduleDeleteResult = UserScheduleResult<{
     readonly id: string;
     readonly deleted: false;
     readonly code: 'schedule_not_found';
+}>;
+/** `user_schedule_pause` 成功响应（仅 after）。 */
+export type UserSchedulePauseResult = UserScheduleResult<{
+    readonly ok: true;
+    readonly uid: string;
+    readonly schedule_id: string;
+    readonly remaining_seconds: number;
+    readonly scheduled_at: string;
+}>;
+/** `user_schedule_resume` 成功响应：新 scheduleId + 原 uid。 */
+export type UserScheduleResumeResult = UserScheduleResult<{
+    readonly ok: true;
+    readonly uid: string;
+    readonly schedule_id: string;
+    readonly remaining_seconds: number;
 }>;
 /** `user_schedule_create` 的规范化输入。 */
 export interface UserScheduleCreateInput {
@@ -173,3 +189,14 @@ export declare function userScheduleList(agent: Agent, ctx: Context): Promise<Us
 export declare function userScheduleDelete(id: unknown, agent: Agent, ctx: Context): Promise<UserScheduleDeleteResult>;
 /** `user_schedule_edit`（改内容）核心实现：删旧建新，保留原时刻与 delivery。 */
 export declare function userScheduleEditPrompt(id: unknown, newPrompt: unknown, agent: Agent, ctx: Context, limits?: PromptLimits): Promise<UserScheduleCreateResult | UserScheduleError>;
+/**
+ * 暂停一条 **after** 提醒（方案 B）：sidecar 留档 + 日志 delete。
+ * 仅 kind==='after' 且未到点；恢复见 {@link userScheduleResume}。
+ */
+export declare function userSchedulePause(id: unknown, agent: Agent, ctx: Context): Promise<UserSchedulePauseResult>;
+/** 恢复一条暂停中的 after 提醒：`after_seconds = remaining` 重建；uid 不变。 */
+export declare function userScheduleResume(uid: unknown, agent: Agent, ctx: Context, maxSchedules?: number): Promise<UserScheduleResumeResult>;
+/** 测试/投影辅助：某会话全部暂停留档。 */
+export declare function listPausedForSession(sessionId: string): Readonly<Record<string, PausedEntry>>;
+/** 测试辅助：按 pause 前 schedule id 查留档。 */
+export declare function findPausedEntry(sessionId: string, scheduleId: string): PausedEntry | undefined;
