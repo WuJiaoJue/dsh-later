@@ -185,7 +185,7 @@ export interface UserScheduleCreateOptions {
 export declare function userScheduleCreate(input: unknown, agent: Agent, ctx: Context, maxSchedules?: number, options?: UserScheduleCreateOptions, limits?: PromptLimits): Promise<UserScheduleCreateResult>;
 /** `user_schedule_list` 核心实现。 */
 export declare function userScheduleList(agent: Agent, ctx: Context): Promise<UserScheduleListResult>;
-/** `user_schedule_delete` 核心实现。 */
+/** `user_schedule_delete` 核心实现。id 可为 scheduleId 或稳定 uid。 */
 export declare function userScheduleDelete(id: unknown, agent: Agent, ctx: Context): Promise<UserScheduleDeleteResult>;
 /** `user_schedule_edit`（改内容）核心实现：删旧建新，保留原时刻与 delivery。 */
 export declare function userScheduleEditPrompt(id: unknown, newPrompt: unknown, agent: Agent, ctx: Context, limits?: PromptLimits): Promise<UserScheduleCreateResult | UserScheduleError>;

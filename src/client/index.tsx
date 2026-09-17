@@ -24,7 +24,6 @@ import { injectStyles } from './styles.js';
 import { SchedButton } from './components/SchedButton.js';
 import { ScheduleDock } from './components/ScheduleDock.js';
 import { SchedulerSettingsCard } from './components/SchedulerSettingsCard.js';
-import { mountReminderToastHost } from './toast.jsx';
 import type { SchedButtonInjected } from './components/SchedButton.js';
 import type { ScheduleDockInjected } from './components/ScheduleDock.js';
 import { mountSessionPresence, type PresenceLocaleLike, type PresenceSessionsLike } from './session-presence.js';
@@ -58,8 +57,6 @@ function apply(ctx: Context): void {
 
   // 样式注入（卸载清理）。
   ctx.effect(() => injectStyles(), 'dsh-later: styles');
-  // 提醒到达 toast 宿主（幂等；随插件生命周期卸载）。
-  ctx.effect(() => mountReminderToastHost(), 'dsh-later: toast host');
   // 侧栏会话行「定时状态」badge（docs/ui/09 路线 B）：数据源为 sessions.list
   // 的行级 projectionValues（session.list 基线覆盖全会话，当前会话由投影帧
   // 实时推进），周期 refresh() 读 RPC 补时效。服务缺失时静默跳过。
