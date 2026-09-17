@@ -72,16 +72,24 @@ ${body}
 mkdirSync('lib', { recursive: true });
 writeFileSync('lib/client.js', wrapped);
 
-// 4. 部署同步：web profile 里安装的本插件与工作区是**硬链接**关系，但
+// 4. 部署同步：各 profile 里安装的本插件与工作区是**硬链接**关系，但
 //    tsc/esbuild 重写文件时可能替换 inode（unlink+create），悄悄断链导致
-//    profile 端拿到旧代码。这里对已知 profile 路径做 best-effort 强制重链。
+//    profile 端拿到旧代码。这里对所有含 dsh-later 的 profile 做 best-effort 强制重链
+//    （不止 web——web-test 等 profile 也要，否则跑错 profile 会像“没生效”）。
 import { readdirSync, statSync, linkSync, existsSync, rmSync } from "node:fs";
 import { homedir } from 'node:os';
 import { resolve as resolvePath, dirname as parentOf } from 'node:path';
 try {
-  const profileLib = resolvePath(homedir(), '.dsh/profiles/web/node_modules/dsh-later/lib');
   const localLib = resolvePath(process.cwd(), 'lib');
-  if (existsSync(profileLib) && profileLib !== localLib) {
+  const profilesRoot = resolvePath(homedir(), '.dsh/profiles');
+  const targets = [];
+  if (existsSync(profilesRoot)) {
+    for (const name of readdirSync(profilesRoot)) {
+      const lib = resolvePath(profilesRoot, name, 'node_modules/dsh-later/lib');
+      if (existsSync(lib) && lib !== localLib) targets.push({ name, lib });
+    }
+  }
+  for (const { name, lib: profileLib } of targets) {
     let linked = 0;
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -107,7 +115,7 @@ try {
       }
     };
     walk(localLib);
-    if (linked > 0) console.log(`🔗 已重链 ${linked} 个文件到 web profile`);
+    if (linked > 0) console.log(`🔗 已重链 ${linked} 个文件到 profile:${name}`);
   }
 } catch (error) {
   console.warn(`⚠️ profile 重链跳过: ${error instanceof Error ? error.message : String(error)}`);
