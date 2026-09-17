@@ -20,7 +20,6 @@ import {
   getPaused,
   getOwnership,
   findScheduleIdByUid,
-  resetCacheForTests,
 } from '../lib/ownership-store.js';
 import {
   initUserScheduleProjection,
@@ -174,6 +173,64 @@ test('resume 拒绝：未暂停 uid', async () => {
   const agent = fakeAgent();
   const r = await userScheduleResume('uid-nope', agent, fakeCtx);
   assert.ok(!r.ok && r.code === 'not_paused');
+});
+
+test('resume 后投影不残留 paused（双行回归）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '双行回归', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  const resumed = await userScheduleResume(p.uid, agent, fakeCtx);
+  assert.ok(resumed.ok);
+
+  let state = initUserScheduleProjection(agent.session.header);
+  for (const event of agent.session.events) {
+    state = applyUserScheduleProjection(state, event);
+  }
+  const view = viewUserScheduleProjection(state);
+  const pausedRows = view.schedules.filter((s) => s.status === 'paused');
+  const activeRows = view.schedules.filter((s) => s.status !== 'paused');
+  assert.equal(pausedRows.length, 0, 'resume 后不得残留 paused 行');
+  assert.equal(activeRows.length, 1);
+  assert.equal(activeRows[0].id, p.uid, 'wire id 应为稳定 uid');
+});
+
+test('delete 支持 uid：活动任务与暂停项', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '可删', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const ownership = getOwnership(agent.session.header.id, created.id);
+  assert.ok(ownership?.uid);
+  const delActive = await userScheduleDelete(ownership.uid, agent, fakeCtx);
+  assert.ok(delActive.ok && delActive.deleted === true);
+
+  const created2 = await userScheduleCreate(
+    { prompt: '暂停后删', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created2.ok);
+  if (!created2.ok) return;
+  const p = await userSchedulePause(created2.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  const delPaused = await userScheduleDelete(p.uid, agent, fakeCtx);
+  assert.ok(delPaused.ok && delPaused.deleted === true);
+  assert.equal(getPaused(agent.session.header.id, p.uid), undefined);
 });
 
 test('投影 stateVersion 为 4 且 wire 带 status', async () => {

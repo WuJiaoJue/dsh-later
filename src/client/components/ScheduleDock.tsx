@@ -15,7 +15,6 @@ import { detectTimeZone, formatHhmm } from '../../time-utils.js';
 import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
-import { showReminderToast } from '../toast.jsx';
 import type { ClientSchedule } from '../types.js';
 
 /** 精确剩余时长：超过 1 小时 `H:MM:SS`，否则 `MM:SS`（负值截为 00:00）。 */
@@ -138,10 +137,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const [resuming, setResuming] = useState<ReadonlySet<string>>(new Set());
   const [pauseErr, setPauseErr] = useState<ReadonlyMap<string, string>>(new Map());
 
-  // 提醒到达检测：上上次渲染仍存在、本次已消失、且已到触发时刻 → 视为 dispatch。
-  // 用户主动取消/编辑造成的消失由 ref 抑制，避免误报。
-  const prevRef = useRef<ReadonlyMap<string, ClientSchedule>>(new Map());
-  const suppressedRef = useRef<ReadonlySet<string>>(new Set());
   // 进度条起点：首次见到任务 id 的本地时刻（仅 at 类任务需要）。
   const firstSeenRef = useRef<ReadonlyMap<string, number>>(new Map());
 
@@ -163,25 +158,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       }
     }
     if (changed) firstSeenRef.current = next;
-
-    const prev = prevRef.current;
-    if (prev.size > 0) {
-      for (const [id, prevItem] of prev) {
-        if (byId.has(id)) continue;
-        if (suppressedRef.current.has(id)) continue;
-        // 已到时刻才弹（dispatch）；手动删掉仍待发的任务不弹
-        if (Date.parse(prevItem.scheduled_at) <= Date.now()) {
-          showReminderToast(prevItem.prompt);
-        }
-      }
-    }
-    prevRef.current = byId;
   }, [byId]);
-
-  // 触发取消/编辑时，把涉及 id 计入抑制集合，避免被误判为「提醒到达」。
-  const suppress = (id: string): void => {
-    suppressedRef.current = new Set(suppressedRef.current).add(id);
-  };
 
   // 只剩一条时回到直出态。
   useEffect(() => {
@@ -195,7 +172,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const expanded = schedules.length === 1 || !collapsed;
 
   const handleCancel = (id: string): void => {
-    suppress(id);
     setCancelling((current) => new Set(current).add(id));
     void callCommand(sessionId, deleteLine(id)).finally(() => {
       window.setTimeout(() => {
@@ -211,13 +187,11 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   /**
    * 用户主动插话（QueueDock「插话发送」语义）：把这条提醒**立即**推给 agent。
    * - 不要求已到点：与 QueueDock 一致，排队中的内容随时可提前送达；成功后出列。
-   * - 进 suppressedRef 抑制「dispatch 已到达」的误报 toast。
    * - 命令返回 success → 记入 steerDone（短暂展示已发送），server 真实 fold 会自然移除 row。
    * - 返回 error → 在行内展示具体原因（every 暂不支持 / 其他）。
    */
   const handleSteer = (item: ClientSchedule): void => {
     const id = item.id;
-    suppress(id);
     setSteering((current) => new Set(current).add(id));
     setSteerErr((current) => {
       const next = new Map(current);
@@ -247,7 +221,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const handlePause = (item: ClientSchedule): void => {
     const id = item.id;
     if (!canPause(item, now)) return;
-    suppress(id);
     setPausing((current) => new Set(current).add(id));
     setPauseErr((current) => {
       const next = new Map(current);
@@ -274,7 +247,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
 
   const handleResume = (item: ClientSchedule): void => {
     const uid = item.id;
-    suppress(uid);
     setResuming((current) => new Set(current).add(uid));
     setPauseErr((current) => {
       const next = new Map(current);
@@ -317,7 +289,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       setEditErr(t.editErrEmpty);
       return;
     }
-    suppress(id);
     setSaving(true);
     setEditErr(null);
     void callCommand(sessionId, editLine(id, trimmed)).then((ok) => {

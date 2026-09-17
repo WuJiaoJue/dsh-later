@@ -534,7 +534,7 @@ export async function userScheduleList(
   });
 }
 
-/** `user_schedule_delete` 核心实现。 */
+/** `user_schedule_delete` 核心实现。id 可为 scheduleId 或稳定 uid。 */
 export async function userScheduleDelete(
   id: unknown,
   agent: Agent,
@@ -543,32 +543,37 @@ export async function userScheduleDelete(
   if (typeof id !== 'string' || id.length === 0 || id.trim() !== id) {
     return { ok: false, code: 'invalid_rule', message: 'schedule id 必须是去空白非空字符串。' };
   }
-  const scheduleId = ScheduleId(id);
   return runUserScheduleTransaction(agent, async () => {
+    const sessionId = agent.session.header?.id;
     let folded;
     try {
       folded = foldUserState(agent.session).folded;
     } catch {
       return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
     }
-    if (!folded.active.some((record) => record.id === scheduleId)) {
-      return { ok: true, id, deleted: false, code: 'schedule_not_found' };
+    // 1) 活动任务：uid → scheduleId
+    const activeId = resolveActiveScheduleId(sessionId, id);
+    if (folded.active.some((record) => record.id === activeId)) {
+      try {
+        agent.session.append('schedule/change', {
+          version: 1,
+          operation: 'delete',
+          id: ScheduleId(activeId),
+        });
+      } catch {
+        return internalError();
+      }
+      if (!(await flushSession(ctx, agent.session))) return persistenceError();
+      removeOwnership(sessionId, activeId);
+      return { ok: true, id, deleted: true };
     }
-    const sessionId = agent.session.header?.id;
-    try {
-      agent.session.append('schedule/change', {
-        version: 1,
-        operation: 'delete',
-        id: scheduleId,
-      });
-    } catch {
-      return internalError();
+    // 2) 暂停项：wire id 即 uid，只清 sidecar（日志里本无该任务）
+    const paused = getPaused(sessionId, id);
+    if (paused !== undefined) {
+      removePaused(sessionId, id);
+      return { ok: true, id, deleted: true };
     }
-    if (!(await flushSession(ctx, agent.session))) return persistenceError();
-    // flush 成功后再撤销所有权（失败时保留：日志里的 delete 可能未落盘，
-    // 运行时还要按 sidecar 继续追踪该任务）。
-    removeOwnership(sessionId, scheduleId);
-    return { ok: true, id, deleted: true };
+    return { ok: true, id, deleted: false, code: 'schedule_not_found' };
   });
 }
 
@@ -809,6 +814,9 @@ export async function userScheduleResume(
     } catch (error) {
       return toInputError(error);
     }
+    // 先清 paused：投影 fold 在 append(create) 时读 sidecar；若 create 落地后才
+    // removePaused，视图会短暂同时出现「已暂停」+ 新活动行（实测重复行根因）。
+    removePaused(sessionId, uid);
     recordOwnership(sessionId, record.id, paused.delivery, uid);
     try {
       agent.session.append('schedule/change', {
@@ -818,13 +826,14 @@ export async function userScheduleResume(
       });
     } catch {
       removeOwnership(sessionId, record.id);
+      recordPaused(sessionId, paused);
       return internalError();
     }
     if (!(await flushSession(ctx, agent.session))) {
       removeOwnership(sessionId, record.id);
+      recordPaused(sessionId, paused);
       return persistenceError();
     }
-    removePaused(sessionId, uid);
     return {
       ok: true,
       uid,
