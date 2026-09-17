@@ -63,13 +63,19 @@ function barSegments(
   return { totalRatio, count };
 }
 
-/** 暂停：用冻结 remaining / 原 after 窗口算静止填充比（不随墙钟走）。 */
+/**
+ * 暂停：冻结填充比 = 冻结时的 elapsed / 原 after 窗口。
+ * 窗口取 `max(after_seconds, remaining)`，避免 after_seconds 缺失或等于
+ * remaining 时 totalRatio 恒为 0（整条进度条“消失”）。
+ */
 function frozenBarSegments(
   item: ClientSchedule,
   frozenLeftMs: number,
 ): { readonly totalRatio: number; readonly count: number } {
-  const totalMs = Math.max(1000, (item.after_seconds ?? 0) * 1000);
-  const left = Math.max(0, frozenLeftMs);
+  const remainingSec = Math.max(0, item.remaining_seconds ?? Math.round(frozenLeftMs / 1000));
+  const windowSec = Math.max(item.after_seconds ?? 0, remainingSec, 1);
+  const totalMs = windowSec * 1000;
+  const left = Math.min(Math.max(0, frozenLeftMs), totalMs);
   const totalRatio = Math.min(1, Math.max(0, (totalMs - left) / totalMs));
   const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
   return { totalRatio, count };
