@@ -66,7 +66,22 @@ PRD/dsh-sleep-send 有「发送前草稿变更 → 自动取消」逻辑。本�
 
 dsh-schedule 的 runtime 只在其自身工具变更 / agent 转 idle 时重驱；命令创建的提醒不会被它武装 timer（线上 E2E 实测：任务显示但永不到期）。本插件因此自带 per-agent 调度器（`runtime.ts`），用户 create/delete 后重驱、到期按 dsh-schedule 语义 dispatch + followup，并借**同一份持久化日志**与 dsh-schedule 互相去重（单次触发，见集成测试与线上 E2E）。原理详见 [`architecture.md`](./architecture.md)。
 
-## 6. `ProjectionDefinition` 版本陷阱（dock 不显示的根因，已修）
+## 6. 跨代兼容单点：`upstream-compat.ts`（2026-09-17）
+
+0.1.1 ↔ 0.1.2 的 Session API / peer 枚举差异曾散落在 `user-tools.foldUserState`、
+`index.ts` settings 注册与 `package.json`。现收敛为：
+
+| 关注点 | 位置 |
+|---|---|
+| Session 读日志双轨 | `readOwnEvents` / `readInheritedEventCount` |
+| peer 代次矩阵 | `KERNEL_GENERATIONS` + `peerMatrixEntries()` |
+| 同步 package.json | `scripts/sync-peer-matrix.mjs` |
+| 矩阵护栏 | `tests/upstream-compat.test.mjs` |
+
+新 rc checklist：矩阵追加一代 → sync 脚本 → 全量测试。settings 命名空间字面量
+在 `domain.SETTINGS_NAMESPACE`（注册处仍 `as SettingsNamespace`——helper 已在 0.1.2 删除）。
+
+## 7. `ProjectionDefinition` 版本陷阱（dock 不显示的根因，已修）
 
 `@deepseek-ai/dsh-session-projection` 在 **rc.1 → rc.2** 之间把注册契约从 `{schema, view}` 改成 `{stateSchema, wire:{viewSchema, view}}`。宿主（web profile）跑 rc.2，而插件 dev 依赖一度解析到 rc.1：类型层按旧契约「通过」、运行时却按新契约把无 `wire` 的单元当 host-only 跳过 →客户端 `useProjection('userSchedules')` 永远 `undefined`，dock 静默消失。名字 `as never` 让 TS 完全没法拦截。
 

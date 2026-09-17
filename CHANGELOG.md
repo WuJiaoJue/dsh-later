@@ -4,6 +4,12 @@
 
 ## 未发布
 
+- **chore** 上游跨代兼容收敛到 `src/upstream-compat.ts`：Session API 双轨探测
+  （`ownEvents` / `events` + `seedLength`）与 peer 代次矩阵（`KERNEL_GENERATIONS`）
+  单点维护。新 rc 落地：改矩阵 → `node scripts/sync-peer-matrix.mjs` → `npm test`。
+  - **fix** 0.1.1 路径补上 `header.seedLength` 回退（此前恒传 `inheritedEventCount=0`，
+    fork 子会话可能把继承前缀误算进用户任务）。
+  - 护栏：`tests/upstream-compat.test.mjs` 锁两代形状 + package.json peer 同步。
 - **fix** 悬浮卡片现在反映定时状态（修复 #4）。此前侧栏行内 badge 显示
   「有提醒」，而同一行悬浮卡片的状态区只说「空闲」，两者自相矛盾：卡片正文
   由宿主的 `sessionStatuses` 硬编码状态链生成，不认识本插件的定时任务，且

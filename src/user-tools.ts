@@ -34,6 +34,7 @@ import { OWNED_EVENT } from './domain.js';
 import type { UserScheduleOwnedChange, UserScheduleDelivery } from './domain.js';
 import { allOwnership, getOwnership, recordOwnership, removeOwnership } from './ownership-store.js';
 import { detectTimeZone } from './time-utils.js';
+import { readInheritedEventCount, readOwnEvents } from './upstream-compat.js';
 
 /** 单 session 用户任务上限（PRD：防滥用）。 */
 export const DEFAULT_MAX_SCHEDULES = 100;
@@ -271,22 +272,12 @@ const foldCache = new WeakMap<object, FoldCacheEntry>();
 
 /** fold 当前会话的完整用户调度状态（带缓存；调用方不得变更返回值）。
  *
- * 跨代兼容：0.1.1 暴露 `session.events` + `header.seedLength`；0.1.2 改名
- * 为 `session.ownEvents()` + `session.inheritedEventCount`。通过鸭子类型
- * （`(session as { ownEvents?; events? })`）双轨探测，不引入 `any`。
+ * 跨代 Session API 探测已收敛到 `upstream-compat.ts`（readOwnEvents /
+ * readInheritedEventCount）——新 rc 若再改名只动那一处。
  */
 export function foldUserState(session: Session): UserFoldState {
-  const sessAny = session as unknown as {
-    ownEvents?: () => readonly SessionEvent[];
-    events?: readonly SessionEvent[];
-  };
-  const events = sessAny.ownEvents !== undefined ? sessAny.ownEvents() : sessAny.events ?? [];
-  // 0.1.2 上 Session.inheritedEventCount 是 SessionLogOffset（BrandedNumber），
-  // foldScheduleEvents 第二个参数需要它；0.1.1 上等价于 header.seedLength（number）。
-  // 接受任意 number，统一以 number 形式进入 cache key；foldScheduleEvents 内部会
-  // 自适应（要么收 number、要么要求 branded——后者 0.1.1 路径不会触达）。
-  const inheritedEventCount: number =
-    (session as unknown as { inheritedEventCount?: number }).inheritedEventCount ?? 0;
+  const events = readOwnEvents(session);
+  const inheritedEventCount = readInheritedEventCount(session);
   const cached = foldCache.get(session);
   if (
     cached !== undefined &&
@@ -296,10 +287,8 @@ export function foldUserState(session: Session): UserFoldState {
   ) {
     return cached.state;
   }
-  // 通过 dsh-schedule 的 foldScheduleEvents 入口：0.1.2 上第二个参数是
-  // SessionLogOffset，但 0.1.1 上是 number（已弃）。我们传 number，运行时
-  // 0.1.2 的 foldScheduleEvents 内部会做 brandshape 校验——若强校验失败，
-  // 改由 session.inheritedEventCount 透传。这里保留双轨探测的安全门。
+  // number 形式进入 foldScheduleEvents：0.1.2 brandshape 校验接受 safe integer；
+  // 0.1.1 直接收 number。
   const folded = foldScheduleEvents(events, inheritedEventCount as never);
   // 所有权与投递形态：sidecar 为准（新写入），日志中的历史 OWNED 事件作底
   // （读兼容，旧日志可能仍有残留行）。

@@ -37,7 +37,7 @@ import type {
   UserScheduleListResult,
   UserScheduleDeleteResult,
 } from './user-tools.js';
-import { name } from './domain.js';
+import { name, SETTINGS_NAMESPACE } from './domain.js';
 import { registerOwnedSessionEventType } from './owned-event-registration.js';
 
 /** 插件配置 schema（全可选，默认开箱即用；经 cordis config 覆盖）。 */
@@ -280,7 +280,7 @@ export function apply(ctx: Context, config?: { maxSchedules?: number }): void {
   ctx.inject(['settings'], (settingsCtx) => {
     const scope = settingsCtx.settings.register(
       // 断言而非 settingsNamespace()：0.1.1 要求 branded 类型，0.1.2 已删除该 helper。
-      'dsh-later' as SettingsNamespace,
+      SETTINGS_NAMESPACE as SettingsNamespace,
       SchedulerSettingsSchema,
       { applies: 'live' },
     );

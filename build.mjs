@@ -15,7 +15,7 @@ try {
   execSync('npx tsc -p tsconfig.json', { stdio: 'inherit' });
 } catch (error) {
   console.warn('⚠️ host tsc 遇到依赖类型差异，尝试 esbuild 降级构建…');
-  const entries = ['src/index.ts', 'src/domain.ts', 'src/owned-event-registration.ts', 'src/user-tools.ts', 'src/commands.ts', 'src/runtime.ts', 'src/projection.ts', 'src/smart-window.ts', 'src/time-utils.ts'];
+  const entries = ['src/index.ts', 'src/domain.ts', 'src/owned-event-registration.ts', 'src/user-tools.ts', 'src/commands.ts', 'src/runtime.ts', 'src/projection.ts', 'src/smart-window.ts', 'src/time-utils.ts', 'src/upstream-compat.ts'];
   for (const entry of entries) {
     const name = entry.replace('src/', '').replace('.ts', '.js');
     const result = await build({

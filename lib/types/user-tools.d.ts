@@ -127,9 +127,8 @@ export interface UserFoldState {
 }
 /** fold 当前会话的完整用户调度状态（带缓存；调用方不得变更返回值）。
  *
- * 跨代兼容：0.1.1 暴露 `session.events` + `header.seedLength`；0.1.2 改名
- * 为 `session.ownEvents()` + `session.inheritedEventCount`。通过鸭子类型
- * （`(session as { ownEvents?; events? })`）双轨探测，不引入 `any`。
+ * 跨代 Session API 探测已收敛到 `upstream-compat.ts`（readOwnEvents /
+ * readInheritedEventCount）——新 rc 若再改名只动那一处。
  */
 export declare function foldUserState(session: Session): UserFoldState;
 /** 稳定内部错误（不透出异常细节）。 */

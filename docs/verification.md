@@ -10,7 +10,12 @@
   1. **peer 枚举完整覆盖**：除了 `dsh-schedule / dsh-session / dsh-session-projection`，把宿主直接 import 的 `@deepseek-ai/{cordis,dsh-agent,dsh-commands,dsh-llm,dsh-settings,dsh-tools,schemastery}` 全部列入 peer + dev——`0.1.1-rc.2` 经 `dsh-schedule` 传递提升到顶层 `node_modules/@deepseek-ai/` 时这些包是可达的；`0.1.2-rc.1` 的 hoisting 策略变化把它们留在 `.pnpm/`，**未声明 peer 的会运行时报 `ERR_MODULE_NOT_FOUND`**（已实测 `lib/runtime.js` import `@deepseek-ai/dsh-llm` 在 0.1.2 直接崩）。
   2. **设置命名空间**写作 `'dsh-later' as SettingsNamespace`（`settingsNamespace()` helper 在 `0.1.2` 已删除，运行时导入会让整个模块链接失败）。
   3. **设置卡片所需的 `SettingsScope`** 在 `src/client/components/SchedulerSettingsCard.tsx` 内本地声明，不从 `@deepseek-ai/dsh-client-runtime/client` 取类型——该包是 `0.1.1` 内核特有，`0.1.2` 已拆走，且同名 `SettingsScope` 在 host（`dsh-settings`）与 client 两侧成员并不相同。peer 为逐代枚举 `^0.1.1-rc.2 || ^0.1.2-rc.1`（node-semver 不把预发布版算进任何范围，除非比较符带同一 `[major.minor.patch]` 元组，故无跨代区间写法）：**上游每发布新 rc 代次就要补一个枚举项**。
-- **Session API 跨代（user-tools `foldUserState`）**：`0.1.1` 暴露 `session.events` + `session.header.seedLength`；`0.1.2` 改名为 `session.ownEvents()` + `session.inheritedEventCount`（`SessionLogOffset`）。代码走鸭子类型双轨探测，不引入 `any`，cache key 维度同步替换为 `inheritedEventCount`，foldScheduleEvents 第二参数透传 runtime 值。
+- **Session API 跨代**：探测与 peer 矩阵已收敛到 `src/upstream-compat.ts`（2026-09-17）。
+  - `readOwnEvents` / `readInheritedEventCount`：`0.1.1` = `.events` + `header.seedLength`；
+    `0.1.2` = `ownEvents()` + `inheritedEventCount`。`foldUserState` 只调这两处。
+  - `KERNEL_GENERATIONS` 是 peer 代次的唯一事实来源；改完跑
+    `node scripts/sync-peer-matrix.mjs` 重写 package.json，再 `npm test`。
+  - 护栏：`tests/upstream-compat.test.mjs`（两代形状一致 + peer/dev 同步 + seedLength 回归）。
 
 ## 验收对照（v1.0.0）
 

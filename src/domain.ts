@@ -20,6 +20,13 @@ import type {} from '@deepseek-ai/dsh-session-projection/types';
 /** 插件名（与 cordis 条目 id / manifest 一致）。 */
 export const name = 'dsh-later';
 
+/**
+ * settings 命名空间。0.1.1 要求 branded `SettingsNamespace`、0.1.2 已删除
+ * `settingsNamespace()` helper——调用处以 `'dsh-later' as SettingsNamespace`
+ * 断言注册（见 index.ts），字面量只在这里维护一份。
+ */
+export const SETTINGS_NAMESPACE = 'dsh-later';
+
 /** 会话投影键：GUI 通过 `useProjection` / `faceOf` 读取用户任务列表。 */
 export const PROJECTION_KEY = 'userSchedules';
 
