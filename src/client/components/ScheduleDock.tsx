@@ -65,8 +65,8 @@ function barSegments(
 
 /**
  * 暂停：冻结填充比 = 冻结时的 elapsed / 原 after 窗口。
- * 窗口取 `max(after_seconds, remaining)`，避免 after_seconds 缺失或等于
- * remaining 时 totalRatio 恒为 0（整条进度条“消失”）。
+ * - 窗口取 `max(after_seconds, remaining)`，避免 after_seconds 缺失时 ratio 恒 0
+ * - elapsed 极小时仍给最小可见比，配合 CSS min-width，避免整条 bar“消失”
  */
 function frozenBarSegments(
   item: ClientSchedule,
@@ -76,7 +76,8 @@ function frozenBarSegments(
   const windowSec = Math.max(item.after_seconds ?? 0, remainingSec, 1);
   const totalMs = windowSec * 1000;
   const left = Math.min(Math.max(0, frozenLeftMs), totalMs);
-  const totalRatio = Math.min(1, Math.max(0, (totalMs - left) / totalMs));
+  let totalRatio = Math.min(1, Math.max(0, (totalMs - left) / totalMs));
+  if (totalRatio > 0 && totalRatio < 0.06) totalRatio = 0.06;
   const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
   return { totalRatio, count };
 }
