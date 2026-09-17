@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- **fix** 删除暂停项后 dock 行不消失：host 只清 sidecar、无会话事件导致投影不刷新；删除成功后客户端本地摘掉该行。
 - **fix** resume 先清 sidecar `paused` 再 append `create`，消除「已暂停 + 新活动」双行。
 - **fix** delete 支持 wire `uid`：活动任务先映射 scheduleId；暂停项直接清 sidecar（此前 `deleted:false`）。
 - **feat** 移除右下角 ⏰ 到达 toast；到点以对话消息为准。
