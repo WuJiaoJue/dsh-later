@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-later · dock 暂停按钮 Demo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-soft: #f6f7f9;
+    --text: #1b1d21;
+    --text-dim: #6b7280;
+    --line: #e5e7eb;
+    --line-strong: #d1d5db;
+    --brand: #4d6bfe;
+    --brand-soft: #eef1ff;
+    --warn: #b45309;
+    --warn-soft: #fff7ed;
+    --ok: #15803d;
+    --ok-soft: #f0fdf4;
+    --danger: #b91c1c;
+    --hover: rgba(0, 0, 0, 0.05);
+    --tip: #f4f5f7;
+    --shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181b;
+      --bg-soft: #1f2126;
+      --text: #e8e9ec;
+      --text-dim: #9aa0a8;
+      --line: #2c2f35;
+      --line-strong: #3a3e46;
+      --brand: #7b93ff;
+      --brand-soft: #232a44;
+      --warn: #f0b26b;
+      --warn-soft: #33291c;
+      --ok: #6ee7a0;
+      --ok-soft: #1d2f24;
+      --danger: #f08a8a;
+      --hover: rgba(255, 255, 255, 0.07);
+      --tip: #212328;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 72px;
+    background: var(--bg-soft);
+    color: var(--text);
+    font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .page { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 34px 0 10px; letter-spacing: .01em; }
+  h2 .tag {
+    font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 999px;
+    background: var(--brand-soft); color: var(--brand); margin-left: 8px; vertical-align: 2px;
+  }
+  .lede { color: var(--text-dim); margin: 0 0 4px; }
+  .note {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; color: var(--text-dim); font-size: 13px; margin: 10px 0 0;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .92em; background: var(--bg-soft); border: 1px solid var(--line);
+    border-radius: 5px; padding: 0 5px;
+  }
+  .panel-demo {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 16px 18px; box-shadow: var(--shadow);
+  }
+  .switcher { display: flex; gap: 6px; margin: 0 0 14px; flex-wrap: wrap; }
+  .switcher button {
+    font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: none; color: var(--text-dim);
+    cursor: pointer;
+  }
+  .switcher button[aria-pressed="true"] {
+    border-color: var(--brand); color: var(--brand); background: var(--brand-soft); font-weight: 500;
+  }
+
+  /* ===== dock 结构复刻（与 src/client/styles.ts 的 ss-dock-* 类同构） ===== */
+  .ss-dock-root { width: 100%; max-width: 720px; }
+  .ss-dock-body {
+    position: relative; width: 100%; padding: 2px 0;
+    background: var(--tip); border-radius: 12px 12px 0 0;
+  }
+  .ss-dock-body::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    border: 1px solid var(--line); border-bottom: none; border-radius: inherit;
+  }
+  .ss-dock-header {
+    box-sizing: border-box; display: flex; align-items: center; gap: 10px;
+    width: 100%; height: 36px; padding: 4px 12px; background: none; border: none;
+    border-radius: 8px; cursor: pointer; text-align: left; color: var(--text); font: inherit;
+  }
+  .ss-dock-header:hover { background: var(--hover); }
+  .ss-dock-lead { display: grid; place-items: center; color: var(--text-dim); flex: none; }
+  .ss-dock-count { flex: auto; min-width: 0; font-size: 13px; font-weight: 500; line-height: 24px; }
+  .ss-dock-chevron { display: grid; place-items: center; width: 14px; height: 14px; color: var(--text-dim); flex: none; }
+  .ss-dock-chevron.ss-open { transform: rotate(180deg); }
+  .ss-dock-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; }
+  .ss-dock-row {
+    box-sizing: border-box; display: flex; align-items: center; gap: 10px;
+    width: 100%; min-height: 36px; padding: 4px 5px 4px 12px; border-radius: 8px;
+  }
+  .ss-dock-row + .ss-dock-row { box-shadow: inset 0 1px 0 var(--line); }
+  .ss-dock-preview { flex: auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .ss-dock-row-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ss-dock-row-time, .ss-dock-row-countdown { flex: none; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .ss-dock-row-countdown.ss-due { color: var(--warn); }
+  .ss-dock-row-countdown.ss-paused { color: var(--text-dim); }
+  .ss-dock-row-prompt { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ss-dock-bars { display: block; }
+  .ss-dock-bar {
+    position: relative; height: 6px; border-radius: 999px; overflow: hidden;
+    background: var(--line);
+  }
+  .ss-dock-bar-fill { position: relative; z-index: 1; height: 100%; border-radius: 999px; background: var(--brand); transition: width 1s linear; }
+  .ss-dock-bar-divider { position: absolute; inset: 0; pointer-events: none; background-repeat: no-repeat; }
+  /* 暂停：进度条静止（含条纹停放纹理），语义 = 「冻结但保留」 */
+  .ss-dock-row.ss-paused .ss-dock-bar-fill {
+    background: repeating-linear-gradient(115deg, var(--text-dim) 0 5px, transparent 5px 10px), var(--line-strong);
+    transition: none;
+  }
+  .ss-dock-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+  .ss-dock-action {
+    display: grid; place-items: center; width: 28px; height: 28px; padding: 0; flex: none;
+    border: none; border-radius: 999px; background: none; cursor: pointer; color: var(--text-dim);
+  }
+  .ss-dock-action:hover:not(:disabled) { background: var(--hover); }
+  .ss-dock-action:disabled { cursor: default; opacity: .45; }
+  .ss-dock-action-hold { color: var(--warn); background: var(--warn-soft); }
+  .ss-dock-action-pause.ss-active { color: var(--warn); }
+  .ss-dock-action-resume.ss-active { color: var(--ok); }
+  .ss-dock-state { font-size: 12px; line-height: 16px; color: var(--text-dim); }
+  .ss-dock-steer-err { color: var(--warn); font-size: 12px; line-height: 16px; }
+
+  /* ===== 面板任务列表（TaskList） ===== */
+  .ss-tasks { max-height: 200px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+  .ss-task { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; font-size: 12px; }
+  .ss-task:hover { background: var(--hover); }
+  .ss-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+  .ss-dot.scheduled { background: var(--brand); }
+  .ss-dot.overdue { background: var(--warn); }
+  .ss-dot.paused { background: var(--text-dim); }
+  .ss-task-main { flex: 1; min-width: 0; }
+  .ss-task-time { color: var(--text-dim); font-size: 11px; }
+  .ss-task-prompt { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ss-task-paused-badge {
+    display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 999px;
+    font-size: 10px; font-weight: 500; color: var(--text-dim); background: var(--line);
+  }
+  .ss-task-btn {
+    flex: none; width: 20px; height: 20px; border: none; background: transparent;
+    cursor: pointer; color: var(--text-dim); border-radius: 999px;
+    display: grid; place-items: center; padding: 0;
+  }
+  .ss-task-btn:hover { background: var(--hover); color: var(--text); }
+  .ss-empty { color: var(--text-dim); text-align: center; padding: 10px 0; font-size: 12px; }
+  .ss-tasklist-head { margin: 12px 0 2px; }
+  .ss-hint { color: var(--text-dim); font-size: 12px; }
+
+  /* ===== 事件日志 ===== */
+  .log {
+    margin-top: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; max-height: 200px; overflow-y: auto; color: var(--text-dim);
+  }
+  .log div { padding: 1px 0; white-space: pre-wrap; }
+  .log .k-cmd { color: var(--brand); }
+  .log .k-ev { color: var(--ok); }
+  .log .k-err { color: var(--danger); }
+  .log .k-dim { color: var(--text-dim); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+  ul.plain { margin: 6px 0 0; padding-left: 20px; color: var(--text-dim); }
+  ul.plain li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>dock 行的「暂停」按钮 · 交互 Demo</h1>
+  <p class="lede">复刻 <code>ScheduleDock.tsx</code> 的行结构与按钮几何，三种方案可点击互相对比。</p>
+  <div class="note">
+    <b>先看结论：</b>缺的确实不只是一个图标 —— 现有 4 个动词（编辑 / 删除 / 插话发送）都是<b>终结型</b>的，
+    缺少一个「<b>保留任务但不让它到点触发</b>」的状态。下面是三档实现成本不同的方案，可点着试。
+  </div>
+
+  <h2>方案对比 <span class="tag">点击切换</span></h2>
+  <div class="switcher" role="group" aria-label="方案切换">
+    <button type="button" data-plan="A" aria-pressed="true">方案 A · 暂停 = 降级为草稿</button>
+    <button type="button" data-plan="B" aria-pressed="false">方案 B · 真暂停（引擎侧 hold）</button>
+    <button type="button" data-plan="C" aria-pressed="false">方案 C · 长按记忆式缓发</button>
+  </div>
+
+  <div class="panel-demo">
+    <div class="ss-dock-root">
+      <div class="ss-dock-body">
+        <button type="button" class="ss-dock-header" id="header">
+          <span class="ss-dock-lead" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.2"/><path d="M7 3.9V7l2.2 1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </span>
+          <span class="ss-dock-count" id="dock-count">3 条定时提醒</span>
+          <span class="ss-dock-chevron ss-open" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.8 5.3 7 9.5l4.2-4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </button>
+        <ul class="ss-dock-list" id="dock-list"></ul>
+      </div>
+    </div>
+    <div class="ss-tasklist-head"><span class="ss-hint" id="panel-head">已设定 (3)</span></div>
+    <ul class="ss-tasks" id="panel-list"></ul>
+  </div>
+
+  <h2>行为日志 <span class="tag">真实命令 / 事件流</span></h2>
+  <div class="log" id="log"></div>
+
+  <h2>三种方案到底差在哪</h2>
+  <table>
+    <thead><tr><th style="width:120px">维度</th><th>方案 A · 降级为草稿</th><th>方案 B · 真暂停</th><th>方案 C · 长按缓发</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>数据形状</td>
+        <td>新增 sidecar <code>status:'draft'</code>；不改 dsh-schedule</td>
+        <td>新增 sidecar <code>status:'paused'</code>；不改 dsh-schedule</td>
+        <td>只用现有 <code>create</code> / <code>delete</code></td>
+      </tr>
+      <tr>
+        <td>暂停时日志</td>
+        <td><code>delete</code>（+sidecar 留档）</td>
+        <td><code>delete</code>（+sidecar 留档）</td>
+        <td><code>delete</code>（原条消失）</td>
+      </tr>
+      <tr>
+        <td>恢复时</td>
+        <td><code>create</code>，时刻=原定时刻，<b>过期则自动顺延到未来</b></td>
+        <td><code>create</code>，<b>原定时刻仍在未来 → 原样恢复</b></td>
+        <td><code>create</code>，剩余时长在<b>长按那一刻</b>被冻结</td>
+      </tr>
+      <tr>
+        <td>宿主<b>重启</b>后</td>
+        <td colspan="2">日志里只有 delete、sidecar 里有记录：故意「不按 create 恢复」→ 暂停项不会被误触发。<b>但会掉出列表</b>（行内状态不跨进程持久）</td>
+        <td>不存在暂停项</td>
+      </tr>
+      <tr>
+        <td>改内容</td>
+        <td>直接改草稿</td>
+        <td>直接改草稿</td>
+        <td>无</td>
+      </tr>
+      <tr>
+        <td>能力边界</td>
+        <td colspan="3">暂停项不占并发/配额、不会触发；但<b>到点静默跳过</b>做不到（时间一到任务还在日志里，引擎就会派发）</td>
+      </tr>
+      <tr>
+        <td>改动量估计</td>
+        <td>~250 行（host 80 / client 120 / 文案 20 / 测试 30）</td>
+        <td>≈ 方案 A + 30 行</td>
+        <td>~80 行</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>为什么不做「真·到点静默跳过」（挂在日志里不触发）</h2>
+  <div class="note">
+    <code>schedule/change</code> 由 dsh-schedule 用 <b>严格解码</b>（多一个字段就抛 <code>corrupt_schedule_log</code>），
+    且它的 runtime 只认「active 且已到点 → 派发」。任何第三方「冻结」标记都出不了两种形态：
+    <b>(1)</b> 写进日志 → 宿主报错；<b>(2)</b> 只记在插件内存/sidecar → 关网页或重启就丢（正好是「暂停」最需要它生效的窗口）。
+    所以暂停只能做成「出日志」—— 也就是 <code>delete</code> + 插件侧留档。
+    <ul class="plain">
+      <li><b>副作用（已实测确认）：</b>暂停后 <code>foldScheduleEvents</code> 的 <code>seenIds</code> 会保留 <code>s1</code>，恢复时不能再分配 <code>s1</code>（<code>allocateScheduleId</code> 返回 <code>s2</code>）—— 也就是<b>恢复后 id 会变</b>，UI 一致但审计链看着像新建。</li>
+      <li><b>替代做法（未采用）：</b>用 <code>edit</code>（delete+create 同 id）把目标时刻改到很远的未来。缺点：日志里的时刻被篡改、面板会显示「1000 小时后」、恢复时又得再 edit 一次，语义含混。</li>
+    </ul>
+  </div>
+
+  <h2>方案 A 的推荐落地形态 <span class="tag">推荐</span></h2>
+  <div class="note">
+    动词拆成两条命令，纯 host、零 UI 阻塞：<br />
+    <code>/user-schedule-pause {"{id}"}</code> → 返回 <code>{"{ok,id,remaining_seconds,scheduled_at}"}</code>，host 把 <code>{prompt, at/after, delivery}</code> 存进 sidecar<br />
+    <code>/user-schedule-resume {"{id}"}</code> → 重建任务并把新 id 回给客户端（dock 行短暂显示「已恢复」，投影回流后替换）<br />
+    面板里暂停项需要一份「暂停清单」投影：投影 state 数组加 <code>paused[]</code> + <code>stateVersion: 4</code>（已确认部署不是 canary，不满足 canary 约束）。
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const t = {
+    countdownLeft: '剩',
+    dueAnyMoment: '即将发送',
+    paused: '已暂停',
+    pausedLong: '已暂停 · 原点 HH:MM 前恢复',
+    resumeHint: '已恢复：',
+  };
+
+  const PAD = (n) => String(n).padStart(2, '0');
+  const hhmm = (epoch) => { const d = new Date(epoch); return PAD(d.getHours()) + ':' + PAD(d.getMinutes()); };
+  const cd = (ms) => {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+    return (h > 0 ? h + ':' : '') + PAD(m) + ':' + PAD(s);
+  };
+  const BAR_UNIT = 3600000;
+
+  let plan = 'A';
+  let now = Date.now();
+  let seq = 3;
+  const HOUR = 3600000;
+
+  /** 模拟「宿主侧」的投影：active = 日志里 fold 出来的活动任务。 */
+  let tasks = [
+    { id: 'schedule-1', prompt: '看一下构建结果，失败了就把日志贴给我', kind: 'at', scheduledAt: now + 1 * HOUR + 58 * 60000 },
+    { id: 'schedule-2', prompt: '提醒我给张工回邮件', kind: 'after', afterSeconds: 6 * 3600, scheduledAt: now + 3 * HOUR },
+    { id: 'schedule-3', prompt: '每 30 分钟看一次压测曲线', kind: 'every', everySeconds: 1800, scheduledAt: now + 42 * 60000 },
+  ];
+  /** sidecar 留档：id -> 暂停记录（方案 A/B 用）。 */
+  const paused = new Map();
+  /** 方案 C：长按记录的剩余时长，id -> ms。 */
+  const held = new Map();
+
+  const listEl = document.getElementById('dock-list');
+  const panelEl = document.getElementById('panel-list');
+  const countEl = document.getElementById('dock-count');
+  const headEl = document.getElementById('panel-head');
+  const logEl = document.getElementById('log');
+
+  function log(kind, text) {
+    const div = document.createElement('div');
+    div.className = 'k-' + kind;
+    div.textContent = '[' + new Date().toLocaleTimeString('zh-CN', { hour12: false }) + '] ' + text;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  const ICONS = {
+    pause: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.6" y="2.6" width="3.2" height="10.8" rx="1.1" fill="currentColor"/><rect x="9.2" y="2.6" width="3.2" height="10.8" rx="1.1" fill="currentColor"/></svg>',
+    play: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.4 2.9c0-.6.66-1 1.18-.68l7.1 4.1c.52.3.52 1.06 0 1.36l-7.1 4.1A.8.8 0 0 1 4.4 11.1V2.9Z" fill="currentColor"/></svg>',
+    hold: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.9" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.4V8l2.4 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    edit: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9.94 1.35a2.2 2.2 0 0 1 2.47.29c.29.17.55.44.9.78.34.35.61.61.78.9a2.2 2.2 0 0 1 0 2.47c-.17.3-.44.56-.78.9L6.66 13.05c-.38.38-.65.66-1 .86-.34.2-.72.3-1.24.44l-1.18.33c-.47.13-.9.25-1.24.29-.35.04-.82.03-1.19-.34-.37-.37-.38-.84-.34-1.19.05-.34.17-.77.3-1.24l.32-1.18c.15-.52.24-.9.44-1.24.2-.34.48-.62.86-1L9.04 2.13c.35-.34.61-.61.9-.78Z" fill="currentColor"/></svg>',
+    del: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.4 1.5h3.2c.9 0 1.5 0 1.97.24.42.21.76.55.97.97.24.47.24 1.07.24 1.97h1.7v1.4H1.5V4.68h1.72c0-.9 0-1.5.24-1.97.21-.42.55-.76.97-.97C4.9 1.5 5.5 1.5 6.4 1.5Zm5.05 6.02.24 3.63c.05.82.06 1.12.02 1.33a.7.7 0 0 1-.3.44c-.18.13-.48.18-1.3.26-.68.06-1.5.07-2.61.07s-1.93 0-2.6-.07c-.83-.08-1.13-.13-1.31-.26a.7.7 0 0 1-.3-.44c-.04-.21-.03-.51.02-1.33l.24-3.63 1.4.1-.23 3.52c-.04.6-.05.83-.04.96.2.05.55.1 1.14.15.63.06 1.38.06 2.38.06s1.75 0 2.38-.06c.59-.05.94-.1 1.14-.15.01-.13 0-.36-.04-.96l-.23-3.53 1.4-.09Z" fill="currentColor"/></svg>',
+    send: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7.25 1.02a1.6 1.6 0 0 1 .76.36c.19.15.4.36.62.58l4.02 4.02-1.01 1.01-3.92-3.91v9.92h-1.43V3.08L2.37 6.99 1.36 5.98l4.02-4.02c.22-.22.43-.43.62-.58a1.6 1.6 0 0 1 .75-.36 2 2 0 0 1 .5 0Z" fill="currentColor"/></svg>',
+  };
+
+  function bar(totalMs, leftMs) {
+    const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT));
+    const ratio = Math.max(0, Math.min(1, (totalMs - leftMs) / Math.max(1000, totalMs)));
+    const fill = ratio * 100;
+    let html = '<div class="ss-dock-bar">';
+    if (count > 1) {
+      const pct = 100 / count;
+      html += '<div class="ss-dock-bar-divider" style="background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(' + pct + '% - 1px), rgba(128,128,128,.55) calc(' + pct + '% - 1px), rgba(128,128,128,.55) ' + pct + '%)"></div>';
+    }
+    html += '<div class="ss-dock-bar-fill" style="width:' + fill + '%"></div></div>';
+    return '<div class="ss-dock-bars">' + html + '</div>';
+  }
+
+  function totalMsOf(task) {
+    if (task.kind === 'every') return task.everySeconds * 1000;
+    if (task.kind === 'after') return task.afterSeconds * 1000;
+    // at：demo 里用创建时记录的 4 小时窗口近似
+    return Math.max(task.scheduledAt - (task.createdAt || (task.scheduledAt - 4 * HOUR)), 1000);
+  }
+
+  function render() {
+    listEl.innerHTML = '';
+    countEl.textContent = tasks.length + ' 条定时提醒';
+    headEl.textContent = '已设定 (' + tasks.length + ')';
+
+    if (tasks.length === 0) {
+      panelEl.innerHTML = '<li class="ss-empty">暂无定时任务</li>';
+    }
+
+    tasks.forEach((task, index) => {
+      const left = task.scheduledAt - now;
+      const overdue = left <= 0;
+      const li = document.createElement('li');
+      li.className = 'ss-dock-row' + (index > 0 ? '' : '');
+      li.dataset.id = task.id;
+
+      const actions = [];
+      if (plan === 'C') {
+        actions.push(btn('ss-dock-action ss-dock-action-hold' + (held.has(task.id) ? ' ss-active' : ''), ICONS.hold,
+          '长按缓发（按住 600ms 冻结剩余时长）', 'hold', task.id));
+      } else {
+        actions.push(btn('ss-dock-action', ICONS.edit, '编辑提醒', 'edit', task.id));
+        actions.push(btn('ss-dock-action ss-dock-action-pause', ICONS.pause, '暂停提醒', 'pause', task.id));
+      }
+      actions.push(btn('ss-dock-action', ICONS.del, '删除提醒', 'del', task.id));
+      if (task.kind !== 'every') {
+        actions.push(btn('ss-dock-action ss-dock-action-steer', ICONS.send, '插话发送', 'steer', task.id));
+      }
+
+      li.innerHTML =
+        '<div class="ss-dock-preview">' +
+          '<div class="ss-dock-row-line">' +
+            '<span class="ss-dock-row-time">' + hhmm(task.scheduledAt) + '</span>' +
+            '<span class="ss-dock-row-countdown' + (overdue ? ' ss-due' : '') + '">' +
+              (overdue ? t.dueAnyMoment : t.countdownLeft + ' ' + cd(left)) +
+            '</span>' +
+            '<span class="ss-dock-row-prompt" title="' + esc(task.prompt) + '">' + esc(task.prompt) + '</span>' +
+          '</div>' +
+          bar(totalMsOf(task), Math.max(left, 0)) +
+          (held.has(task.id) ? '<span class="ss-dock-state">' + t.pausedLong.replace('HH:MM', hhmm(task.scheduledAt)) + '</span>' : '') +
+        '</div>' +
+        '<div class="ss-dock-actions">' + actions.join('') + '</div>';
+      listEl.appendChild(li);
+    });
+
+    // 面板里的暂停清单
+    if (plan !== 'C') {
+      const pausedItems = [...paused.values()];
+      panelEl.innerHTML = tasks.map((task) =>
+        '<li class="ss-task"><span class="ss-dot ' + (task.scheduledAt - now <= 0 ? 'overdue' : 'scheduled') + '"></span>' +
+        '<span class="ss-task-main"><span class="ss-task-time">' + hhmm(task.scheduledAt) + ' · ' + cd(task.scheduledAt - now) + '</span><br />' +
+        '<span class="ss-task-prompt">' + esc(task.prompt) + '</span></span>' +
+        '<button type="button" class="ss-task-btn" data-act="panel-pause" data-id="' + task.id + '" title="暂停提醒">' + ICONS.pause + '</button>' +
+        '<button type="button" class="ss-task-btn" data-act="panel-del" data-id="' + task.id + '" title="删除提醒">✕</button></li>'
+      ).join('') + pausedItems.map((entry) =>
+        '<li class="ss-task"><span class="ss-dot paused"></span>' +
+        '<span class="ss-task-main"><span class="ss-task-time">' + hhmm(entry.scheduledAt) + ' · ' + t.paused + '</span><br />' +
+        '<span class="ss-task-prompt">' + esc(entry.prompt) + '<span class="ss-task-paused-badge">' + t.paused + '</span></span></span>' +
+        '<button type="button" class="ss-task-btn" data-act="panel-resume" data-id="' + entry.id + '" title="恢复提醒">' + ICONS.play + '</button>' +
+        '<button type="button" class="ss-task-btn" data-act="panel-drop" data-id="' + entry.id + '" title="删除提醒">✕</button></li>'
+      ).join('');
+      headEl.textContent = '已设定 (' + tasks.length + (pausedItems.length ? ' + 已暂停 ' + pausedItems.length : '') + ')';
+    }
+  }
+
+  function esc(text) { return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function btn(cls, icon, title, act, id) {
+    return '<button type="button" class="' + cls + '" title="' + title + '" aria-label="' + title + '" data-act="' + act + '" data-id="' + id + '">' + icon + '</button>';
+  }
+
+  function find(id) { return tasks.find((task) => task.id === id); }
+
+  /** 方案 A/B：暂停 = 命令 + 日志 delete + sidecar 留档。 */
+  function pause(id, silent) {
+    const task = find(id);
+    if (!task) return;
+    if (task.scheduledAt - now <= 0 && !silent) {
+      log('err', 'host: user-schedule-pause → already_due：' + id + ' 已到期，无法暂停（提示：请先删除，或到点后由 /later 重发）');
+      return;
+    }
+    paused.set(id, {
+      id, prompt: task.prompt, scheduledAt: task.scheduledAt, kind: task.kind,
+      afterSeconds: task.afterSeconds, everySeconds: task.everySeconds,
+      remainingSeconds: Math.max(0, Math.round((task.scheduledAt - Date.now()) / 1000)),
+      delivery: 'context',
+    });
+    tasks = tasks.filter((task) => task.id !== id);
+    if (!silent) {
+      log('cmd', '/user-schedule-pause {"id":"' + id + '"}');
+      log('ev', 'host → sidecar 记录 {status:\'paused\'} · 会话日志 append schedule/change:delete id=' + id);
+      log('dim', '投影回流：' + id + ' 从 dock / 面板活动列表移除；' + id + ' 进入「已暂停」清单');
+      render();
+    }
+  }
+
+  /** 方案 A/B：恢复 = create（A 过期顺延，B 原样）。 */
+  function resume(id) {
+    const entry = paused.get(id);
+    if (!entry) return;
+    const nextId = 'schedule-' + (++seq);
+    const origin = entry.scheduledAt;
+    const keepAt = plan === 'A' && origin <= Date.now() ? Date.now() + 120000 : origin;
+    const rolled = keepAt !== origin;
+    const created = {
+      id: nextId, prompt: entry.prompt,
+      kind: entry.kind === 'every' ? 'every' : 'after',
+      afterSeconds: entry.kind === 'every' ? entry.everySeconds : entry.afterSeconds,
+      everySeconds: entry.kind === 'every' ? entry.everySeconds : undefined,
+      scheduledAt: keepAt, createdAt: Date.now(),
+    };
+    paused.delete(id);
+    tasks = [...tasks, created].sort((a, b) => a.scheduledAt - b.scheduledAt);
+    log('cmd', '/user-schedule-resume {"id":"' + id + '"}');
+    log('ev', 'host → 会话日志 append schedule/change:create ' + nextId + (rolled ? '（A：原定时刻已过 → 顺延到 +2 分钟）' : '（原定时刻仍有效，原样恢复）'));
+    log('dim', '注意：折叠保留 seenIds，恢复后的 id 变成 ' + nextId + '（' + id + ' 不复用）；sidecar 清掉旧条目');
+    render();
+  }
+
+  function drop(id) {
+    paused.delete(id);
+    log('cmd', '/user-schedule-delete {"id":"' + id + '"}（清掉暂停留档）');
+    render();
+  }
+
+  /** 方案 C：长按 600ms → 冻结剩余时长（snooze）。 */
+  function hold(id) {
+    const task = find(id);
+    if (!task) return;
+    const remaining = Math.max(0, task.scheduledAt - Date.now());
+    held.set(id, remaining);
+    log('ev', '长按命中：冻结剩余 ' + cd(remaining) + '（本地计时，不占调度器）');
+    render();
+  }
+
+  function release(id) {
+    if (!held.has(id)) return;
+    const remaining = held.get(id);
+    held.delete(id);
+    const task = find(id);
+    task.scheduledAt = Date.now() + remaining;
+    task.createdAt = Date.now() - (totalMsOf(task) - remaining);
+    log('cmd', '/user-schedule-delete {"id":"' + id + '"} → /user-schedule-create {"prompt":"' + task.prompt + '","after_seconds":' + Math.round(remaining / 1000) + '}');
+    log('ev', '缓发完成：' + id + ' 目标时刻重置为 ' + hhmm(task.scheduledAt) + '（剩余时长完全保留）');
+    render();
+  }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-act]');
+    if (!target) return;
+    const act = target.dataset.act;
+    const id = target.dataset.id;
+    if (act === 'pause') pause(id);
+    else if (act === 'panel-pause') pause(id);
+    else if (act === 'resume' || act === 'panel-resume') resume(id);
+    else if (act === 'drop' || act === 'panel-drop' || act === 'del' || act === 'panel-del') {
+      if (paused.has(id)) drop(id);
+      else {
+        tasks = tasks.filter((task) => task.id !== id);
+        log('cmd', '/user-schedule-delete {"id":"' + id + '"}');
+        render();
+      }
+    } else if (act === 'steer') {
+      log('cmd', '/user-schedule-steer-now {"id":"' + id + '"} → 立即推给 agent 并出列');
+      tasks = tasks.filter((task) => task.id !== id);
+      render();
+    } else if (act === 'edit') {
+      log('dim', '（编辑沿用现有行内输入框，本 demo 不展开）');
+    } else if (act === 'hold') {
+      const el = target;
+      const timer = setTimeout(() => { el.dataset.longpress = '1'; hold(id); }, 600);
+      const cancel = () => { clearTimeout(timer); el.removeEventListener('pointerup', cancel); el.removeEventListener('pointerleave', cancel); };
+      el.addEventListener('pointerup', cancel);
+      el.addEventListener('pointerleave', cancel);
+      return;
+    }
+  });
+
+  const holdButtons = new WeakMap();
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target.closest('[data-act="hold"]');
+    if (!target) return;
+    const timer = setTimeout(() => {
+      target.dataset.longpress = '1';
+      hold(target.dataset.id);
+    }, 600);
+    holdButtons.set(target, { timer, id: target.dataset.id });
+  });
+  document.addEventListener('pointerup', (event) => {
+    const target = event.target.closest('[data-act="hold"]');
+    if (!target) return;
+    const state = holdButtons.get(target);
+    if (state) {
+      clearTimeout(state.timer);
+      if (target.dataset.longpress === '1') { release(state.id); delete target.dataset.longpress; }
+      holdButtons.delete(target);
+    }
+  });
+
+  document.querySelectorAll('.switcher button').forEach((button) => {
+    button.addEventListener('click', () => {
+      plan = button.dataset.plan;
+      document.querySelectorAll('.switcher button').forEach((other) => {
+        other.setAttribute('aria-pressed', String(other === button));
+      });
+      logEl.innerHTML = '';
+      log('dim', '切换到方案 ' + plan + ' —— 面板里也能操作（方案 C 无暂停概念）');
+      render();
+    });
+  });
+
+  document.getElementById('header').addEventListener('click', () => {
+    const list = document.getElementById('dock-list');
+    list.style.display = list.style.display === 'none' ? '' : 'none';
+  });
+
+  setInterval(() => { now = Date.now(); render(); }, 1000);
+  log('dim', '准备就绪。默认方案 A：点行内 ⏸ 暂停一条，再点面板「已暂停」区里的 ▶ 恢复。');
+  render();
+})();
+</script>
+</body>
+</html>
