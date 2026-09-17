@@ -64,6 +64,18 @@ function barSegments(
   return { totalRatio, count };
 }
 
+/** 暂停：用冻结 remaining / 原 after 窗口算静止填充比（不随墙钟走）。 */
+function frozenBarSegments(
+  item: ClientSchedule,
+  frozenLeftMs: number,
+): { readonly totalRatio: number; readonly count: number } {
+  const totalMs = Math.max(1000, (item.after_seconds ?? 0) * 1000);
+  const left = Math.max(0, frozenLeftMs);
+  const totalRatio = Math.min(1, Math.max(0, (totalMs - left) / totalMs));
+  const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
+  return { totalRatio, count };
+}
+
 /** 应用层注入的调用能力。 */
 export interface ScheduleDockInjected {
   /** 向宿主执行一条 slash 命令；返回是否受理。 */
@@ -88,6 +100,16 @@ const deleteLine = (id: string): string => `/user-schedule-delete ${JSON.stringi
 const editLine = (id: string, prompt: string): string =>
   `/user-schedule-edit ${JSON.stringify({ id, prompt })}`;
 const steerLine = (id: string): string => `/user-schedule-steer-now ${JSON.stringify({ id })}`;
+const pauseLine = (id: string): string => `/user-schedule-pause ${JSON.stringify({ id })}`;
+const resumeLine = (uid: string): string => `/user-schedule-resume ${JSON.stringify({ uid })}`;
+
+/** 仅 after 且未到点可暂停（与 host 校验一致）。 */
+function canPause(item: ClientSchedule, now: number): boolean {
+  if (item.status === 'paused') return false;
+  if (item.kind !== 'after') return false;
+  const epoch = Date.parse(item.scheduled_at);
+  return Number.isFinite(epoch) && epoch > now;
+}
 
 export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: ScheduleDockProps): JSX.Element | null {
   const now = useNow(1000);
@@ -111,6 +133,10 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const [steering, setSteering] = useState<ReadonlySet<string>>(new Set());
   const [steerDone, setSteerDone] = useState<ReadonlySet<string>>(new Set());
   const [steerErr, setSteerErr] = useState<ReadonlyMap<string, string>>(new Map());
+  // 暂停 / 恢复
+  const [pausing, setPausing] = useState<ReadonlySet<string>>(new Set());
+  const [resuming, setResuming] = useState<ReadonlySet<string>>(new Set());
+  const [pauseErr, setPauseErr] = useState<ReadonlyMap<string, string>>(new Map());
 
   // 提醒到达检测：上上次渲染仍存在、本次已消失、且已到触发时刻 → 视为 dispatch。
   // 用户主动取消/编辑造成的消失由 ref 抑制，避免误报。
@@ -218,6 +244,61 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       });
   };
 
+  const handlePause = (item: ClientSchedule): void => {
+    const id = item.id;
+    if (!canPause(item, now)) return;
+    suppress(id);
+    setPausing((current) => new Set(current).add(id));
+    setPauseErr((current) => {
+      const next = new Map(current);
+      next.delete(id);
+      return next;
+    });
+    void callCommand(sessionId, pauseLine(id))
+      .then((ok) => {
+        if (!ok) {
+          setPauseErr((current) => new Map(current).set(id, t.editErrNotAccepted));
+        }
+      })
+      .catch(() => {
+        setPauseErr((current) => new Map(current).set(id, t.editErrCommandFailed));
+      })
+      .finally(() => {
+        setPausing((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      });
+  };
+
+  const handleResume = (item: ClientSchedule): void => {
+    const uid = item.id;
+    suppress(uid);
+    setResuming((current) => new Set(current).add(uid));
+    setPauseErr((current) => {
+      const next = new Map(current);
+      next.delete(uid);
+      return next;
+    });
+    void callCommand(sessionId, resumeLine(uid))
+      .then((ok) => {
+        if (!ok) {
+          setPauseErr((current) => new Map(current).set(uid, t.editErrNotAccepted));
+        }
+      })
+      .catch(() => {
+        setPauseErr((current) => new Map(current).set(uid, t.editErrCommandFailed));
+      })
+      .finally(() => {
+        setResuming((current) => {
+          const next = new Set(current);
+          next.delete(uid);
+          return next;
+        });
+      });
+  };
+
   const startEdit = (item: ClientSchedule): void => {
     setEditingId(item.id);
     setEditingText(item.prompt);
@@ -282,32 +363,69 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
         </li>
       );
     }
+    const isPaused = item.status === 'paused';
+    const frozenLeft = isPaused
+      ? (item.remaining_seconds ?? 0) * 1000
+      : epoch - now;
+    const countdownText = isPaused
+      ? t.pausedLabel
+      : state === 'overdue'
+        ? t.dueAnyMoment
+        : `${t.countdownLeft} ${formatCountdown(Math.max(0, frozenLeft))}`;
     return (
-      <li key={item.id} className="ss-dock-row" data-ss-dock-row={item.id}>
+      <li
+        key={item.id}
+        className={`ss-dock-row${isPaused ? ' ss-paused' : ''}`}
+        data-ss-dock-row={item.id}
+      >
         <div className="ss-dock-preview">
           <div className="ss-dock-row-line">
             <span className="ss-dock-row-time">{formatHhmm(epoch, detectTimeZone())}</span>
-            <span className={`ss-dock-row-countdown${state === 'overdue' ? ' ss-due' : ''}`}>
-              {state === 'overdue' ? t.dueAnyMoment : `${t.countdownLeft} ${formatCountdown(epoch - now)}`}
+            <span className={`ss-dock-row-countdown${!isPaused && state === 'overdue' ? ' ss-due' : ''}${isPaused ? ' ss-paused-label' : ''}`}>
+              {countdownText}
             </span>
             <span className="ss-dock-row-prompt" title={item.prompt}>{item.prompt}</span>
           </div>
-          <MultiBar item={item} now={now} firstSeen={firstSeenRef.current} t={t} />
-          {steerErr.get(item.id) !== undefined && (
-            <span className="ss-dock-steer-err">{steerErr.get(item.id)}</span>
+          <MultiBar item={item} now={now} firstSeen={firstSeenRef.current} t={t} frozen={isPaused} frozenLeftMs={frozenLeft} />
+          {(steerErr.get(item.id) ?? pauseErr.get(item.id)) !== undefined && (
+            <span className="ss-dock-steer-err">{steerErr.get(item.id) ?? pauseErr.get(item.id)}</span>
           )}
         </div>
-        {/* 图标顺序对齐 QueueDock：编辑 → 删除 → 插话发送 */}
+        {/* 图标：编辑 → 暂停/恢复 → 删除 → 插话（暂停保留槽位宽度） */}
         <div className="ss-dock-actions">
           <button
             type="button"
             className="ss-dock-action"
             title={t.editTask}
             aria-label={t.editTask}
+            disabled={isPaused}
             onClick={() => startEdit(item)}
           >
             <QueueEditIcon />
           </button>
+          {isPaused ? (
+            <button
+              type="button"
+              className={`ss-dock-action ss-paused-active${resuming.has(item.id) ? ' ss-pending' : ''}`}
+              title={t.resumeTask}
+              aria-label={t.resumeTask}
+              disabled={resuming.has(item.id)}
+              onClick={() => handleResume(item)}
+            >
+              <QueueResumeIcon />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`ss-dock-action${pausing.has(item.id) ? ' ss-pending' : ''}`}
+              title={canPause(item, now) ? t.pauseTask : t.pauseUnsupportedKind}
+              aria-label={canPause(item, now) ? t.pauseTask : t.pauseUnsupportedKind}
+              disabled={!canPause(item, now) || pausing.has(item.id)}
+              onClick={() => handlePause(item)}
+            >
+              <QueuePauseIcon />
+            </button>
+          )}
           <button
             type="button"
             className="ss-dock-action"
@@ -323,7 +441,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
               className={`ss-dock-action ss-dock-action-steer${steering.has(item.id) ? ' ss-pending' : ''}${steerDone.has(item.id) ? ' ss-done' : ''}`}
               title={steerDone.has(item.id) ? t.steerAlreadySent : t.steerTask}
               aria-label={steerDone.has(item.id) ? t.steerAlreadySent : t.steerTask}
-              disabled={steering.has(item.id) || steerDone.has(item.id)}
+              disabled={isPaused || steering.has(item.id) || steerDone.has(item.id)}
               onClick={() => handleSteer(item)}
             >
               <QueueSendIcon />
@@ -370,13 +488,19 @@ function MultiBar({
   now,
   firstSeen,
   t,
+  frozen = false,
+  frozenLeftMs,
 }: {
   item: ClientSchedule;
   now: number;
   firstSeen: ReadonlyMap<string, number>;
   t: SchedStrings;
+  frozen?: boolean;
+  frozenLeftMs?: number;
 }): JSX.Element {
-  const { totalRatio, count } = barSegments(item, now, firstSeen);
+  const { totalRatio, count } = frozen
+    ? frozenBarSegments(item, frozenLeftMs ?? 0)
+    : barSegments(item, now, firstSeen);
   return (
     <div
       className={`ss-dock-bars${count > 4 ? ' ss-dock-bars-compact' : ''}`}
@@ -446,6 +570,25 @@ function QueueSendIcon(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="M7.24707 1.01771C7.52897 1.07653 7.77619 1.19694 8.00391 1.38001C8.19202 1.53136 8.39884 1.73784 8.61914 1.95814L12.6396 5.9806L11.6299 6.99134L7.71484 3.0763V13.0001H6.28516V3.0763L2.36914 6.99134L1.35938 5.9806L5.38086 1.95814C5.60116 1.73784 5.80798 1.53136 5.99609 1.38001C6.19476 1.22027 6.4385 1.06739 6.75195 1.01771C6.91296 0.992304 7.07471 0.997504 7.24707 1.01771Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 暂停「⏸」（16×16）。 */
+function QueuePauseIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="3.6" y="2.6" width="3.2" height="10.8" rx="1.1" fill="currentColor" />
+      <rect x="9.2" y="2.6" width="3.2" height="10.8" rx="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 恢复「▶」（16×16）。 */
+function QueueResumeIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M4.4 2.9c0-.6.66-1 1.18-.68l7.1 4.1c.52.3.52 1.06 0 1.36l-7.1 4.1A.8.8 0 0 1 4.4 11.1V2.9Z" fill="currentColor" />
     </svg>
   );
 }

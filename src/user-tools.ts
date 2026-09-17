@@ -32,7 +32,20 @@ import {
 import type { ScheduleRecord, ScheduleView } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT } from './domain.js';
 import type { UserScheduleOwnedChange, UserScheduleDelivery } from './domain.js';
-import { allOwnership, getOwnership, recordOwnership, removeOwnership } from './ownership-store.js';
+import {
+  allOwnership,
+  allPaused,
+  findPausedByScheduleId,
+  findScheduleIdByUid,
+  getOwnership,
+  getPaused,
+  newTaskUid,
+  recordOwnership,
+  recordPaused,
+  removeOwnership,
+  removePaused,
+} from './ownership-store.js';
+import type { PausedEntry } from './ownership-store.js';
 import { detectTimeZone } from './time-utils.js';
 import { readInheritedEventCount, readOwnEvents } from './upstream-compat.js';
 
@@ -104,6 +117,8 @@ export type UserScheduleErrorCode =
   | 'already_overdue'
   | 'quota_exceeded'
   | 'persistence_uncertain'
+  | 'unsupported_kind'
+  | 'not_paused'
   | 'internal_error';
 
 /** 封闭错误值。 */
@@ -130,6 +145,23 @@ export type UserScheduleDeleteResult = UserScheduleResult<
   | { readonly ok: true; readonly id: string; readonly deleted: true }
   | { readonly ok: true; readonly id: string; readonly deleted: false; readonly code: 'schedule_not_found' }
 >;
+
+/** `user_schedule_pause` 成功响应（仅 after）。 */
+export type UserSchedulePauseResult = UserScheduleResult<{
+  readonly ok: true;
+  readonly uid: string;
+  readonly schedule_id: string;
+  readonly remaining_seconds: number;
+  readonly scheduled_at: string;
+}>;
+
+/** `user_schedule_resume` 成功响应：新 scheduleId + 原 uid。 */
+export type UserScheduleResumeResult = UserScheduleResult<{
+  readonly ok: true;
+  readonly uid: string;
+  readonly schedule_id: string;
+  readonly remaining_seconds: number;
+}>;
 
 /** `user_schedule_create` 的规范化输入。 */
 export interface UserScheduleCreateInput {
@@ -456,7 +488,7 @@ export async function userScheduleCreate(
     // 所有权写 sidecar（append 之前：投影 fold 在事件到达时按 sidecar 判定归属）。
     // flush 失败则回滚，避免 sidecar 与日志漂移。
     const sessionId = agent.session.header?.id;
-    recordOwnership(sessionId, id, trustedDelivery);
+    recordOwnership(sessionId, id, trustedDelivery, newTaskUid());
     try {
       agent.session.append('schedule/change', {
         version: 1,
@@ -613,10 +645,10 @@ export async function userScheduleEditPrompt(
     }
     const delivery = deliveries.get(scheduleId) ?? 'context';
     // 新所有权先写 sidecar（create 事件到达投影 fold 时按 sidecar 判定归属）；
-    // 旧条目在 flush 成功后再撤销（失败回滚两侧）。
+    // 旧条目在 flush 成功后再撤销（失败回滚两侧）。uid 跨编辑保留。
     const sessionId = agent.session.header?.id;
     const previousEntry = getOwnership(sessionId, scheduleId);
-    recordOwnership(sessionId, record.id, delivery);
+    recordOwnership(sessionId, record.id, delivery, previousEntry?.uid);
     try {
       agent.session.append('schedule/change', { version: 1, operation: 'delete', id: scheduleId });
       agent.session.append('schedule/change', { version: 1, operation: 'create', schedule: record });
@@ -633,4 +665,181 @@ export async function userScheduleEditPrompt(
     const view = scheduleView(record, Date.now());
     return { ok: true, ...serializeScheduleView(view) };
   });
+}
+
+/** 把 wire/命令里的 id 解析为当前 active 的日志 schedule id（uid 或 scheduleId）。 */
+function resolveActiveScheduleId(sessionId: string, id: string): string {
+  if (getOwnership(sessionId, id) !== undefined) return id;
+  const byUid = findScheduleIdByUid(sessionId, id);
+  return byUid ?? id;
+}
+
+/**
+ * 暂停一条 **after** 提醒（方案 B）：sidecar 留档 + 日志 delete。
+ * 仅 kind==='after' 且未到点；恢复见 {@link userScheduleResume}。
+ */
+export async function userSchedulePause(
+  id: unknown,
+  agent: Agent,
+  ctx: Context,
+): Promise<UserSchedulePauseResult> {
+  if (typeof id !== 'string' || id.length === 0 || id.trim() !== id) {
+    return { ok: false, code: 'invalid_rule', message: 'schedule id 必须是去空白非空字符串。' };
+  }
+  return runUserScheduleTransaction(agent, async () => {
+    const sessionId = agent.session.header?.id;
+    let folded;
+    let owned;
+    let deliveryMap;
+    try {
+      const state = foldUserState(agent.session);
+      folded = state.folded;
+      owned = state.owned;
+      deliveryMap = state.delivery;
+    } catch {
+      return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
+    }
+    const scheduleId = resolveActiveScheduleId(sessionId, id);
+    const existing = folded.active.find((record) => record.id === scheduleId);
+    if (existing === undefined || !owned.has(scheduleId)) {
+      return { ok: false, code: 'schedule_not_found', message: `未找到可暂停的定时任务 ${id}。` };
+    }
+    if (existing.kind !== 'after') {
+      return { ok: false, code: 'unsupported_kind', message: '仅支持暂停「再等 N 分钟」类（after）提醒。' };
+    }
+    const now = Date.now();
+    const target = Date.parse(existing.scheduledAt);
+    if (!Number.isFinite(target) || target <= now) {
+      return {
+        ok: false,
+        code: 'already_overdue',
+        message: '任务已到点，无法暂停；请删除或等待发送。',
+      };
+    }
+    const remainingSeconds = Math.max(1, Math.ceil((target - now) / 1000));
+    const ownership = getOwnership(sessionId, scheduleId);
+    const uid = ownership?.uid ?? newTaskUid();
+    const delivery = deliveryMap.get(scheduleId) ?? ownership?.delivery ?? 'context';
+    // 旧条目无 uid 时补写，保证 pause 后有稳定身份
+    if (ownership?.uid === undefined) {
+      recordOwnership(sessionId, scheduleId, delivery, uid);
+    }
+    const pausedEntry: PausedEntry = {
+      uid,
+      prompt: existing.prompt,
+      delivery,
+      kind: 'after',
+      remainingSeconds,
+      originalScheduledAt: existing.scheduledAt,
+      ...(existing.kind === 'after' && existing.afterSeconds !== undefined
+        ? { originalAfterSeconds: existing.afterSeconds }
+        : {}),
+      lastScheduleId: scheduleId,
+      pausedAt: now,
+    };
+    // sidecar 先写（投影 delete 后按 lastScheduleId 挂回 paused 列表）
+    recordPaused(sessionId, pausedEntry);
+    try {
+      agent.session.append('schedule/change', {
+        version: 1,
+        operation: 'delete',
+        id: ScheduleId(scheduleId),
+      });
+    } catch {
+      removePaused(sessionId, uid);
+      return internalError();
+    }
+    if (!(await flushSession(ctx, agent.session))) {
+      removePaused(sessionId, uid);
+      return persistenceError();
+    }
+    removeOwnership(sessionId, scheduleId);
+    return {
+      ok: true,
+      uid,
+      schedule_id: scheduleId,
+      remaining_seconds: remainingSeconds,
+      scheduled_at: existing.scheduledAt,
+    };
+  });
+}
+
+/** 恢复一条暂停中的 after 提醒：`after_seconds = remaining` 重建；uid 不变。 */
+export async function userScheduleResume(
+  uid: unknown,
+  agent: Agent,
+  ctx: Context,
+  maxSchedules: number = DEFAULT_MAX_SCHEDULES,
+): Promise<UserScheduleResumeResult> {
+  if (typeof uid !== 'string' || uid.length === 0 || uid.trim() !== uid) {
+    return { ok: false, code: 'invalid_rule', message: 'uid 必须是去空白非空字符串。' };
+  }
+  return runUserScheduleTransaction(agent, async () => {
+    const sessionId = agent.session.header?.id;
+    const paused = getPaused(sessionId, uid);
+    if (paused === undefined) {
+      return { ok: false, code: 'not_paused', message: `未找到暂停中的任务 ${uid}。` };
+    }
+    let folded;
+    let owned;
+    try {
+      const state = foldUserState(agent.session);
+      folded = state.folded;
+      owned = state.owned;
+    } catch {
+      return { ok: false, code: 'internal_error', message: '会话定时日志读取失败。' };
+    }
+    const activeCount = folded.active.filter((record) => owned.has(record.id)).length;
+    if (activeCount >= maxSchedules) {
+      return {
+        ok: false,
+        code: 'quota_exceeded',
+        message: `当前会话最多 ${maxSchedules} 个定时任务，请先删除部分任务。`,
+      };
+    }
+    const now = Date.now();
+    let record: ScheduleRecord;
+    try {
+      record = createAfterScheduleRecord(
+        ScheduleId(allocateScheduleId(folded)),
+        paused.prompt,
+        Math.max(1, paused.remainingSeconds),
+        now,
+      );
+    } catch (error) {
+      return toInputError(error);
+    }
+    recordOwnership(sessionId, record.id, paused.delivery, uid);
+    try {
+      agent.session.append('schedule/change', {
+        version: 1,
+        operation: 'create',
+        schedule: record,
+      });
+    } catch {
+      removeOwnership(sessionId, record.id);
+      return internalError();
+    }
+    if (!(await flushSession(ctx, agent.session))) {
+      removeOwnership(sessionId, record.id);
+      return persistenceError();
+    }
+    removePaused(sessionId, uid);
+    return {
+      ok: true,
+      uid,
+      schedule_id: record.id,
+      remaining_seconds: Math.max(1, paused.remainingSeconds),
+    };
+  });
+}
+
+/** 测试/投影辅助：某会话全部暂停留档。 */
+export function listPausedForSession(sessionId: string): Readonly<Record<string, PausedEntry>> {
+  return allPaused(sessionId);
+}
+
+/** 测试辅助：按 pause 前 schedule id 查留档。 */
+export function findPausedEntry(sessionId: string, scheduleId: string): PausedEntry | undefined {
+  return findPausedByScheduleId(sessionId, scheduleId);
 }

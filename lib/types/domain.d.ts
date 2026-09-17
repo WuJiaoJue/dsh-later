@@ -55,6 +55,7 @@ export type UserScheduleDelivery = 'context' | 'user';
  * 字段用 snake_case，与 `user_schedule_list` 工具响应保持一致。
  */
 export interface UserScheduleWireItem {
+    /** 稳定身份：active 优先 ownership.uid，否则 scheduleId；paused 恒为 uid。 */
     readonly id: string;
     readonly kind: 'after' | 'at' | 'every';
     readonly prompt: string;
@@ -64,6 +65,12 @@ export interface UserScheduleWireItem {
     /** 创建时刻（来自 create 事件的 time；旧日志/未知时缺省）。 */
     readonly created_at?: string;
     readonly delivery_mode: 'session-local';
+    /** active 可省略（旧客户端）；paused 必带。 */
+    readonly status?: 'active' | 'paused';
+    /** 暂停冻结的剩余秒数。 */
+    readonly remaining_seconds?: number;
+    /** 日志 schedule id（pause 前 / active 当前）。 */
+    readonly schedule_id?: string;
 }
 /** 投影输出值。 */
 export interface UserScheduleProjectionValue {
@@ -108,6 +115,18 @@ export interface UserScheduleProjectionState {
         createdAt?: number;
     }[];
     readonly seedSeq: number;
+    /** sidecar 暂停留档的 plain-JSON 镜像（init/事件后刷新）。 */
+    readonly paused: readonly {
+        uid: string;
+        prompt: string;
+        delivery: UserScheduleDelivery;
+        kind: 'after';
+        remainingSeconds: number;
+        originalScheduledAt: string;
+        originalAfterSeconds?: number;
+        lastScheduleId: string;
+        pausedAt: number;
+    }[];
 }
 /** 判断事件是否属于本插件所有权流。 */
 export declare function isOwnedEvent(event: SessionEvent): event is SessionEvent & {

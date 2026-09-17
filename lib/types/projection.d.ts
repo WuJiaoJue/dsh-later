@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule';
+import type { PausedEntry } from './ownership-store.js';
 import type { UserScheduleProjectionValue } from './domain.js';
 /** 投影 wire 值 schema（wire.viewSchema：离开宿主前校验客户端载荷）。 */
 export declare const userSchedulesSchema: z.ZodObject<{
@@ -28,6 +29,9 @@ export declare const userSchedulesSchema: z.ZodObject<{
         scheduled_at: z.ZodString;
         created_at: z.ZodOptional<z.ZodString>;
         delivery_mode: z.ZodLiteral<"session-local">;
+        status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
+        remaining_seconds: z.ZodOptional<z.ZodNumber>;
+        schedule_id: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const userSchedulesStateSchema: z.ZodObject<{
@@ -43,6 +47,17 @@ export declare const userSchedulesStateSchema: z.ZodObject<{
         createdAt: z.ZodOptional<z.ZodNumber>;
     }, z.core.$loose>>;
     seedSeq: z.ZodNumber;
+    paused: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        uid: z.ZodString;
+        prompt: z.ZodString;
+        delivery: z.ZodUnion<readonly [z.ZodLiteral<"context">, z.ZodLiteral<"user">]>;
+        kind: z.ZodLiteral<"after">;
+        remainingSeconds: z.ZodNumber;
+        originalScheduledAt: z.ZodString;
+        originalAfterSeconds: z.ZodOptional<z.ZodNumber>;
+        lastScheduleId: z.ZodString;
+        pausedAt: z.ZodNumber;
+    }, z.core.$strip>>>;
 }, z.core.$strip>;
 /** 活动存储记录：dsh-schedule 记录 + 创建时刻（来自 create 事件的 time）。 */
 export type StoredScheduleRecord = ScheduleRecord & {
@@ -58,6 +73,8 @@ export interface UserScheduleProjectionState {
     readonly active: readonly StoredScheduleRecord[];
     /** 已见 `session/end-seed` 的 seq；更早的继承前缀一律忽略。 */
     readonly seedSeq: number;
+    /** sidecar 暂停留档镜像。 */
+    readonly paused: readonly PausedEntry[];
 }
 /** 初始状态：按会话 id 从所有权 sidecar 装载（进程重启后恢复 GUI 归属）。 */
 export declare function initUserScheduleProjection(header?: {
@@ -67,7 +84,7 @@ export declare function initUserScheduleProjection(header?: {
  * 增量 fold。返回同一引用当事件无关；返回新状态当 owned/active 发生变化。
  */
 export declare function applyUserScheduleProjection(state: UserScheduleProjectionState, event: SessionEvent): UserScheduleProjectionState;
-/** 投影 view：只暴露用户创建的、当前活动的记录。 */
+/** 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。 */
 export declare function viewUserScheduleProjection(state: UserScheduleProjectionState): UserScheduleProjectionValue;
 /**
  * 投影单元声明（传给 sessionProjections.register）。
@@ -93,6 +110,17 @@ export declare const userSchedulesProjectionUnit: {
             createdAt: z.ZodOptional<z.ZodNumber>;
         }, z.core.$loose>>;
         seedSeq: z.ZodNumber;
+        paused: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            uid: z.ZodString;
+            prompt: z.ZodString;
+            delivery: z.ZodUnion<readonly [z.ZodLiteral<"context">, z.ZodLiteral<"user">]>;
+            kind: z.ZodLiteral<"after">;
+            remainingSeconds: z.ZodNumber;
+            originalScheduledAt: z.ZodString;
+            originalAfterSeconds: z.ZodOptional<z.ZodNumber>;
+            lastScheduleId: z.ZodString;
+            pausedAt: z.ZodNumber;
+        }, z.core.$strip>>>;
     }, z.core.$strip>;
     readonly init: typeof initUserScheduleProjection;
     readonly apply: typeof applyUserScheduleProjection;
@@ -107,9 +135,12 @@ export declare const userSchedulesProjectionUnit: {
                 scheduled_at: z.ZodString;
                 created_at: z.ZodOptional<z.ZodString>;
                 delivery_mode: z.ZodLiteral<"session-local">;
+                status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
+                remaining_seconds: z.ZodOptional<z.ZodNumber>;
+                schedule_id: z.ZodOptional<z.ZodString>;
             }, z.core.$strict>>;
         }, z.core.$strict>;
         readonly view: typeof viewUserScheduleProjection;
     };
-    readonly stateVersion: 3;
+    readonly stateVersion: 4;
 };

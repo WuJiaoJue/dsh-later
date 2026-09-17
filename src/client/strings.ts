@@ -42,6 +42,13 @@ const zh = {
   steerAlreadySent: '已插话',
   steerFailed: '插话失败：{message}',
   steerUnsupportedKind: '周期提醒暂不支持插话',
+  /** 暂停 / 恢复（仅 after；原地冻结进度条） */
+  pauseTask: '暂停提醒',
+  resumeTask: '恢复提醒',
+  pausedLabel: '已暂停',
+  pauseFailed: '暂停失败：{message}',
+  resumeFailed: '恢复失败：{message}',
+  pauseUnsupportedKind: '仅支持暂停「再等 N 分钟」类提醒',
   /** dock 折叠头计数（QueueDock「N 条排队消息」样式） */
   panelCount: '{n} 条定时提醒',
   /** 精准倒计时（dock 行 + 折叠头） */
@@ -110,6 +117,12 @@ const en: { [K in keyof typeof zh]: string } = {
   steerAlreadySent: 'Steered',
   steerFailed: 'Steer failed: {message}',
   steerUnsupportedKind: 'Recurring reminders can\'t be steered',
+  pauseTask: 'Pause reminder',
+  resumeTask: 'Resume reminder',
+  pausedLabel: 'Paused',
+  pauseFailed: 'Pause failed: {message}',
+  resumeFailed: 'Resume failed: {message}',
+  pauseUnsupportedKind: 'Only "wait N minutes" (after) reminders can be paused',
   panelCount: '{n} scheduled reminders',
   countdownLeft: 'in',
   dueAnyMoment: 'Sending soon',
