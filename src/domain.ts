@@ -76,8 +76,10 @@ export interface UserScheduleWireItem {
   readonly delivery_mode: 'session-local';
   /** active 可省略（旧客户端）；paused 必带。 */
   readonly status?: 'active' | 'paused';
-  /** 暂停冻结的剩余秒数。 */
+  /** 暂停冻结的剩余秒数（整数秒，仅用于倒计时文案）。 */
   readonly remaining_seconds?: number;
+  /** 暂停时刻（ISO；客户端据此冻结进度条，避免整数秒取整造成的长度跳变）。 */
+  readonly paused_at?: string;
   /** 日志 schedule id（pause 前 / active 当前）。 */
   readonly schedule_id?: string;
   /**

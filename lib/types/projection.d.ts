@@ -31,6 +31,7 @@ export declare const userSchedulesSchema: z.ZodObject<{
         delivery_mode: z.ZodLiteral<"session-local">;
         status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
         remaining_seconds: z.ZodOptional<z.ZodNumber>;
+        paused_at: z.ZodOptional<z.ZodString>;
         schedule_id: z.ZodOptional<z.ZodString>;
         window_seconds: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strict>>;
@@ -138,6 +139,7 @@ export declare const userSchedulesProjectionUnit: {
                 delivery_mode: z.ZodLiteral<"session-local">;
                 status: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"active">, z.ZodLiteral<"paused">]>>;
                 remaining_seconds: z.ZodOptional<z.ZodNumber>;
+                paused_at: z.ZodOptional<z.ZodString>;
                 schedule_id: z.ZodOptional<z.ZodString>;
                 window_seconds: z.ZodOptional<z.ZodNumber>;
             }, z.core.$strict>>;

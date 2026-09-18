@@ -14,7 +14,10 @@ export interface ClientSchedule {
   readonly created_at?: string;
   readonly delivery_mode: 'session-local';
   readonly status?: 'active' | 'paused';
+  /** 暂停冻结的剩余秒数（整数秒；倒计时文案用，进度条用 paused_at）。 */
   readonly remaining_seconds?: number;
+  /** 暂停时刻（epoch ms 由客户端解析；进度条据此冻结，与活动期同一时间基准）。 */
+  readonly paused_at?: string;
   readonly schedule_id?: string;
   /** 进度条总窗口（秒）。resume 后 after_seconds 只是剩余，此字段保留原间隔。 */
   readonly window_seconds?: number;
