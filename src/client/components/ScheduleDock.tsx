@@ -32,19 +32,17 @@ function formatCountdown(ms: number): string {
 const BAR_UNIT_MS = 3_600_000;
 
 /**
- * Boss 血条式单管进度：单根长条内按时长切成 N 段等比分隔，
- * 用一条整体填充表达 elapsed/total，段线只是视觉刻度。
- *  - 总时长 = 触发时刻 − 起点；管数 = ceil(总时长 / 1h)，最少 1 段
- *  - 起点：`after`/`every` 用间隔反推；`at` 用 created_at（create 事件固化），
- *    都没有时回退客户端首见时刻
- *  - 返回 { totalRatio, count }：单根管的总填充比 + 等比分隔数（视觉分段数）
+ * 推导进度条起点与总窗口（暂停/活动期共用同一套时间基准）。
+ * - `after`：`window_seconds`（resume 后保留的原间隔）→ `after_seconds` → `created_at` → 首见时刻
+ * - `every`：`every_seconds` 反推
+ * - 其余：`created_at` → 首见时刻
  */
-function barSegments(
+function barWindow(
   item: ClientSchedule,
+  end: number,
   now: number,
   firstSeen: ReadonlyMap<string, number>,
-): { readonly totalRatio: number; readonly count: number } {
-  const end = Date.parse(item.scheduled_at);
+): { readonly start: number; readonly totalMs: number } {
   let start: number;
   if (item.kind === 'after') {
     // resume 后 after_seconds=剩余；window_seconds=原间隔 → 进度从冻结处继续
@@ -65,7 +63,20 @@ function barSegments(
   } else {
     start = firstSeen.get(item.id) ?? now;
   }
-  const totalMs = Math.max(1000, end - start);
+  return { start, totalMs: Math.max(1000, end - start) };
+}
+
+/**
+ * 活动期进度比：elapsed / total（elapsed 钳在 [0, total]）。
+ * 与 {@link frozenBarSegments} 共用 {@link barWindow}，保证暂停前后只有 `now` 不同。
+ */
+function barSegments(
+  item: ClientSchedule,
+  now: number,
+  firstSeen: ReadonlyMap<string, number>,
+): { readonly totalRatio: number; readonly count: number } {
+  const end = Date.parse(item.scheduled_at);
+  const { start, totalMs } = barWindow(item, end, now, firstSeen);
   const elapsedMs = Math.min(Math.max(now - start, 0), totalMs);
   const totalRatio = elapsedMs / totalMs;
   const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
@@ -73,20 +84,27 @@ function barSegments(
 }
 
 /**
- * 暂停：冻结填充比 = 冻结时的 elapsed / 原 after 窗口。
- * - 窗口取 `max(after_seconds, remaining)`，避免 after_seconds 缺失时 ratio 恒 0
- * - elapsed 极小时仍给最小可见比，配合 CSS min-width，避免整条 bar“消失”
+ * 暂停冻结进度比：把 `now` 换成暂停时刻，其余基准与活动期完全一致。
+ * - 优先用 `paused_at`（精确 ms），与暂停前最后一帧渲染的 elapsed 同源，
+ *   消除 `remaining_seconds` 整数秒取整造成的长度跳变
+ * - 回退 `remaining_seconds`（旧 sidecar / 旧 host 缺 `paused_at` 时，
+ *   向下取整使冻结比不超过暂停前真实进度）
+ * - 不做额外的最小可见比抬升：极早期进度由 CSS `min-width` 统一兜底，
+ *   active 与 paused 同一规则，避免暂停前后保底阈值不一致
  */
 function frozenBarSegments(
   item: ClientSchedule,
   frozenLeftMs: number,
+  firstSeen: ReadonlyMap<string, number>,
 ): { readonly totalRatio: number; readonly count: number } {
-  const remainingSec = Math.max(0, item.remaining_seconds ?? Math.round(frozenLeftMs / 1000));
-  const windowSec = Math.max(item.after_seconds ?? 0, remainingSec, 1);
-  const totalMs = windowSec * 1000;
-  const left = Math.min(Math.max(0, frozenLeftMs), totalMs);
-  let totalRatio = Math.min(1, Math.max(0, (totalMs - left) / totalMs));
-  if (totalRatio > 0 && totalRatio < 0.06) totalRatio = 0.06;
+  const end = Date.parse(item.scheduled_at);
+  const now = Date.parse(item.paused_at ?? '');
+  const frozenNow = Number.isNaN(now)
+    ? end - Math.floor(frozenLeftMs / 1000) * 1000
+    : now;
+  const { start, totalMs } = barWindow(item, end, frozenNow, firstSeen);
+  const elapsedMs = Math.min(Math.max(frozenNow - start, 0), totalMs);
+  const totalRatio = elapsedMs / totalMs;
   const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
   return { totalRatio, count };
 }
@@ -515,7 +533,7 @@ function MultiBar({
   frozenLeftMs?: number;
 }): JSX.Element {
   const { totalRatio, count } = frozen
-    ? frozenBarSegments(item, frozenLeftMs ?? 0)
+    ? frozenBarSegments(item, frozenLeftMs ?? 0, firstSeen)
     : barSegments(item, now, firstSeen);
   return (
     <div
