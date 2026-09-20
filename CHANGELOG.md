@@ -4,6 +4,18 @@
 
 ## 未发布
 
+- **fix** 暂停 / 恢复后进度条长度会变（**两处根因**）：
+  - **窗口缩水（宿主）**：resume 用 `after_seconds = remaining` 重建日志记录，原窗口
+    另存 `ownership.windowSeconds`；而 pause 却从日志的 `afterSeconds` 取窗口，
+    于是每「恢复→再暂停」一轮窗口就缩水一次（2 分钟任务 → 暂停(120) → 恢复(85)
+    → 再暂停(窗被记成 85)…）。进度条比例随之失真，实测塌缩到 2.3%。
+    修复：pause 优先取 `ownership.windowSeconds`，仅首次暂停回退日志值。
+  - **冻结帧基准（客户端）**：冻结比过去用 `scheduled_at` 反推，而暂停后该字段会
+    换成 `originalScheduledAt`，窗口基准整体跳变。改为纯算术
+    `(窗口 − 剩余) / 窗口`，并抽出 `src/bar-geometry.ts` 供两侧共用 + 单测覆盖。
+  - **教训**：中途曾用「客户端墙钟」做冻结上界，导致上界随时间前进、条越缩越短
+    （29% → 2.9%）；现上界仅在宿主 `paused_at` 晚于点击时补回往返耗时，
+    且不影响主算式。`tests/bar-geometry.test.mjs` 锁死这两类回归。
 - **fix** 删除暂停项后 dock 行不消失（**根因修复**）：投影 view 改为**以 sidecar 为准**重读 `paused`，不再信任可能陈旧的 `state.paused` 镜像。
   - 根因：删除暂停项只清 sidecar、不写会话事件——**也不能写**：该 id 在 pause 时已被
     `dsh-schedule` 删除，补写 `delete` 会抛 `schedule delete targets inactive id`，让整份

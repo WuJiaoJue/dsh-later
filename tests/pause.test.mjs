@@ -27,6 +27,8 @@ import {
   viewUserScheduleProjection,
 } from '../lib/projection.js';
 import { freshOwnershipDir } from './helpers/ownership-state.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resetCacheForTests } from '../lib/ownership-store.js';
 
 let fakeSessionSeq = 0;
 
@@ -159,7 +161,7 @@ test('pause 拒绝：every / at / 已到点 / 不存在', async () => {
   );
   assert.ok(due.ok);
   if (due.ok) {
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     const r = await userSchedulePause(due.id, dueAgent, fakeCtx);
     assert.ok(!r.ok && r.code === 'already_overdue');
   }
@@ -419,4 +421,92 @@ test('回归：state.paused 陈旧时，view 以 sidecar 为准（删除暂停�
     0,
     'view 必须按 sidecar 重读：陈旧 paused 镜像不得让已删除的行复活',
   );
+});
+
+/**
+ * 回归：反复「恢复 → 再暂停」不得让进度条窗口缩水。
+ *
+ * resume 用 `after_seconds = remaining` 重建日志记录，原窗口另存
+ * ownership.windowSeconds。若 pause 从日志的 afterSeconds 取窗口，
+ * 每轮都会把窗口记成「当次剩余」，窗口越缩越小，
+ * 进度条比例随之失真（实测 2 分钟任务暂停后比例从 29% 塌到 2.3%）。
+ */
+test('回归：resume→再暂停 后 originalAfterSeconds 仍是原窗口', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '窗口守恒', after_seconds: 120, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const sessionId = agent.session.header.id;
+
+  // 第 1 次暂停：窗口 = 120
+  const p1 = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p1.ok);
+  if (!p1.ok) return;
+  assert.equal(getPaused(sessionId, p1.uid)?.originalAfterSeconds, 120);
+
+  // 恢复：日志 after_seconds 变成「当次剩余」，原窗口只存在于 ownership.windowSeconds。
+  const r1 = await userScheduleResume(p1.uid, agent, fakeCtx);
+  assert.ok(r1.ok);
+  if (!r1.ok) return;
+
+  // 直接改 sidecar 制造「日志 after_seconds < 原窗口」这一真实条件
+  //（等价于恢复后又过了一段时间），避免依赖 sleep 的取整时机导致 flaky。
+  const file = `${process.env.DSH_LATER_STATE_DIR}/${sessionId.replace(/[^A-Za-z0-9._-]/g, '_')}.json`;
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  raw.entries[r1.schedule_id].windowSeconds = 120; // 原窗口保留
+  writeFileSync(file, JSON.stringify(raw));
+  resetCacheForTests();
+  // 让日志记录呈现「恢复后已过 90s」的形状：afterSeconds 远小于原窗口。
+  // 记录是 Object.freeze 的，故替换整条事件而非原地改字段。
+  const idx = agent.session.events.findIndex(
+    (e) => e.data?.operation === 'create' && e.data.schedule?.id === r1.schedule_id,
+  );
+  assert.ok(idx >= 0, '应能找到恢复产生的 create 事件');
+  const ev = agent.session.events[idx];
+  agent.session.events[idx] = {
+    ...ev,
+    data: { ...ev.data, schedule: { ...ev.data.schedule, afterSeconds: 30 } },
+  };
+
+  const p2 = await userSchedulePause(r1.schedule_id, agent, fakeCtx);
+  assert.ok(p2.ok);
+  if (!p2.ok) return;
+  assert.equal(
+    getPaused(sessionId, p2.uid)?.originalAfterSeconds,
+    120,
+    '窗口必须取自 ownership（120），不得用日志 afterSeconds（30）导致缩水',
+  );
+});
+
+test('投影 wire：暂停行的 window_seconds 恒为原窗口（供进度条使用）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: 'wire 窗口', after_seconds: 120, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p1 = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p1.ok);
+  if (!p1.ok) return;
+  const r1 = await userScheduleResume(p1.uid, agent, fakeCtx);
+  assert.ok(r1.ok);
+  if (!r1.ok) return;
+  const p2 = await userSchedulePause(r1.schedule_id, agent, fakeCtx);
+  assert.ok(p2.ok);
+  if (!p2.ok) return;
+
+  let state = initUserScheduleProjection(agent.session.header);
+  for (const event of agent.session.events) state = applyUserScheduleProjection(state, event);
+  const paused = viewUserScheduleProjection(state).schedules.filter((s) => s.status === 'paused');
+  assert.equal(paused.length, 1);
+  assert.equal(paused[0]?.window_seconds, 120, 'wire 必须给出原窗口，进度条据此算比例');
+  assert.equal(paused[0]?.id, p2.uid);
 });

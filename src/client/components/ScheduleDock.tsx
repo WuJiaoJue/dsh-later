@@ -16,6 +16,7 @@ import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import type { CommandOutcome } from '../../command-outcome.js';
+import { barSegments, frozenBarSegments } from '../../bar-geometry.js';
 import type { ClientSchedule } from '../types.js';
 
 /** 精确剩余时长：超过 1 小时 `H:MM:SS`，否则 `MM:SS`（负值截为 00:00）。 */
@@ -27,87 +28,6 @@ function formatCountdown(ms: number): string {
   const mm = String(m).padStart(2, '0');
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
-/** 每根进度条代表的时长（1 小时 = 一根满管）。 */
-const BAR_UNIT_MS = 3_600_000;
-
-/**
- * 推导进度条起点与总窗口（暂停/活动期共用同一套时间基准）。
- * - `after`：`window_seconds`（resume 后保留的原间隔）→ `after_seconds` → `created_at` → 首见时刻
- * - `every`：`every_seconds` 反推
- * - 其余：`created_at` → 首见时刻
- */
-function barWindow(
-  item: ClientSchedule,
-  end: number,
-  now: number,
-  firstSeen: ReadonlyMap<string, number>,
-): { readonly start: number; readonly totalMs: number } {
-  let start: number;
-  if (item.kind === 'after') {
-    // resume 后 after_seconds=剩余；window_seconds=原间隔 → 进度从冻结处继续
-    const windowSec = item.window_seconds ?? item.after_seconds;
-    if (windowSec !== undefined) {
-      start = end - windowSec * 1000;
-    } else if (item.created_at !== undefined) {
-      const parsed = Date.parse(item.created_at);
-      start = Number.isNaN(parsed) ? (firstSeen.get(item.id) ?? now) : parsed;
-    } else {
-      start = firstSeen.get(item.id) ?? now;
-    }
-  } else if (item.kind === 'every' && item.every_seconds !== undefined) {
-    start = end - item.every_seconds * 1000;
-  } else if (item.created_at !== undefined) {
-    const parsed = Date.parse(item.created_at);
-    start = Number.isNaN(parsed) ? (firstSeen.get(item.id) ?? now) : parsed;
-  } else {
-    start = firstSeen.get(item.id) ?? now;
-  }
-  return { start, totalMs: Math.max(1000, end - start) };
-}
-
-/**
- * 活动期进度比：elapsed / total（elapsed 钳在 [0, total]）。
- * 与 {@link frozenBarSegments} 共用 {@link barWindow}，保证暂停前后只有 `now` 不同。
- */
-function barSegments(
-  item: ClientSchedule,
-  now: number,
-  firstSeen: ReadonlyMap<string, number>,
-): { readonly totalRatio: number; readonly count: number } {
-  const end = Date.parse(item.scheduled_at);
-  const { start, totalMs } = barWindow(item, end, now, firstSeen);
-  const elapsedMs = Math.min(Math.max(now - start, 0), totalMs);
-  const totalRatio = elapsedMs / totalMs;
-  const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
-  return { totalRatio, count };
-}
-
-/**
- * 暂停冻结进度比：把 `now` 换成暂停时刻，其余基准与活动期完全一致。
- * - 优先用 `paused_at`（精确 ms），与暂停前最后一帧渲染的 elapsed 同源，
- *   消除 `remaining_seconds` 整数秒取整造成的长度跳变
- * - 回退 `remaining_seconds`（旧 sidecar / 旧 host 缺 `paused_at` 时，
- *   向下取整使冻结比不超过暂停前真实进度）
- * - 不做额外的最小可见比抬升：极早期进度由 CSS `min-width` 统一兜底，
- *   active 与 paused 同一规则，避免暂停前后保底阈值不一致
- */
-function frozenBarSegments(
-  item: ClientSchedule,
-  frozenLeftMs: number,
-  firstSeen: ReadonlyMap<string, number>,
-): { readonly totalRatio: number; readonly count: number } {
-  const end = Date.parse(item.scheduled_at);
-  const now = Date.parse(item.paused_at ?? '');
-  const frozenNow = Number.isNaN(now)
-    ? end - Math.floor(frozenLeftMs / 1000) * 1000
-    : now;
-  const { start, totalMs } = barWindow(item, end, frozenNow, firstSeen);
-  const elapsedMs = Math.min(Math.max(frozenNow - start, 0), totalMs);
-  const totalRatio = elapsedMs / totalMs;
-  const count = Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS));
-  return { totalRatio, count };
 }
 
 /** 应用层注入的调用能力。 */
@@ -205,6 +125,38 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
 
   // 进度条起点：首次见到任务 id 的本地时刻（仅 at 类任务需要）。
   const firstSeenRef = useRef<ReadonlyMap<string, number>>(new Map());
+  /**
+   * 每个任务「最后一次以 active 渲染」的墙钟时刻（按 id 记账）。
+   *
+   * 仅用于给冻结帧做**上界钳制**：宿主 `paused_at` 是命令到达宿主的时刻，比用户
+   * 点击晚（命令往返），钳一下可让暂停瞬间的条长等于点击前最后一帧。
+   *
+   * 注意这只是「锦上添花」——冻结比本身由 `(窗口 - 剩余) / 窗口` 纯算术得出
+   * （见 bar-geometry），不依赖本 map。因此即便记账缺失/过期，最坏也只是多显示
+   * 一点进度，不会出现塌缩或漂移（早期版本把冻结比建在这个上界上，
+   * 导致 resume 换窗口后 25.7% → 3.3% 的塌缩）。
+   */
+  const lastActiveAtRef = useRef<ReadonlyMap<string, number>>(new Map());
+  const wallClock = Date.now();
+  {
+    const next = new Map(lastActiveAtRef.current);
+    let changed = false;
+    for (const item of schedules) {
+      if (item.status === 'paused') continue; // 暂停后停止更新，避免上界前进
+      const prev = next.get(item.id);
+      if (prev === undefined || wallClock > prev) {
+        next.set(item.id, wallClock);
+        changed = true;
+      }
+    }
+    for (const id of [...next.keys()]) {
+      if (!schedules.some((item) => item.id === id)) {
+        next.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) lastActiveAtRef.current = next;
+  }
 
   const byId = useMemo(() => new Map(schedules.map((item) => [item.id, item] as const)), [schedules]);
   useEffect(() => {
@@ -442,7 +394,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
             </span>
             <span className="ss-dock-row-prompt" title={item.prompt}>{item.prompt}</span>
           </div>
-          <MultiBar item={item} now={now} firstSeen={firstSeenRef.current} t={t} frozen={isPaused} frozenLeftMs={frozenLeft} />
+          <MultiBar item={item} now={wallClock} firstSeen={firstSeenRef.current} t={t} frozen={isPaused} frozenLeftMs={frozenLeft} renderedAt={lastActiveAtRef.current.get(item.id) ?? wallClock} />
           {(steerErr.get(item.id) ?? pauseErr.get(item.id)) !== undefined && (
             <span className="ss-dock-steer-err">{steerErr.get(item.id) ?? pauseErr.get(item.id)}</span>
           )}
@@ -546,6 +498,7 @@ function MultiBar({
   t,
   frozen = false,
   frozenLeftMs,
+  renderedAt,
 }: {
   item: ClientSchedule;
   now: number;
@@ -553,9 +506,11 @@ function MultiBar({
   t: SchedStrings;
   frozen?: boolean;
   frozenLeftMs?: number;
+  /** 客户端已渲染过的最新时刻；冻结帧据此钳位，避免暂停瞬间条长跳增。 */
+  renderedAt: number;
 }): JSX.Element {
   const { totalRatio, count } = frozen
-    ? frozenBarSegments(item, frozenLeftMs ?? 0, firstSeen)
+    ? frozenBarSegments(item, frozenLeftMs ?? 0, firstSeen, renderedAt)
     : barSegments(item, now, firstSeen);
   return (
     <div

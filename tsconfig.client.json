@@ -21,7 +21,8 @@
     "src/smart-window.ts",
     "src/time-utils.ts",
     "src/domain.ts",
-    "src/command-outcome.ts"
+    "src/command-outcome.ts",
+    "src/bar-geometry.ts"
   ],
   "exclude": ["node_modules", "lib", "tests"]
 }
