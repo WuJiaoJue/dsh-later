@@ -26,6 +26,7 @@ import { ScheduleDock } from './components/ScheduleDock.js';
 import { SchedulerSettingsCard } from './components/SchedulerSettingsCard.js';
 import type { SchedButtonInjected } from './components/SchedButton.js';
 import type { ScheduleDockInjected } from './components/ScheduleDock.js';
+import type { CommandOutcome } from '../command-outcome.js';
 import { mountSessionPresence, type PresenceLocaleLike, type PresenceSessionsLike } from './session-presence.js';
 
 /** Filled slot：输入框右侧工具行。 */
@@ -135,16 +136,22 @@ function apply(ctx: Context): void {
     }), 'dsh-later: locale');
   }
 
-  /** 执行一条 slash 命令（解析会话 face → command()）。 */
+  /**
+   * 执行一条 slash 命令（解析会话 face → command()）。
+   *
+   * 注意：commands 框架的 admission 语义只回 `{matched}`，handler 的业务结果
+   * **不**经此返回（它落在会话记录里）。因此这里只能回答「是否受理」，调用方
+   * 不得据此判断「业务是否真的发生了」——状态以 `userSchedules` 投影为准。
+   */
   const callCommand: SchedButtonInjected['callCommand'] = async (sessionId, line) => {
     const actx = sessions.scope(sessionId as never);
     const face = actx === undefined ? undefined : sessions.sessionOf(actx);
-    if (face === undefined) return false;
+    if (face === undefined) return { matched: false };
     try {
       const result = await face.command(line);
-      return result?.ok === true && result.value?.matched === true;
+      return { matched: result?.ok === true && result.value?.matched === true };
     } catch {
-      return false;
+      return { matched: false };
     }
   };
 

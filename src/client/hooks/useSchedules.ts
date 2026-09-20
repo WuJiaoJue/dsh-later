@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientSchedule, CreateCommandPayload } from '../types.js';
+import type { CommandOutcome } from '../../command-outcome.js';
 import { detectTimeZone } from '../../time-utils.js';
 import { useNow } from '../useCountdown.js';
 import {
@@ -26,8 +27,8 @@ import { CLIENT_ERR } from '../strings.js';
 
 /** 应用层注入的调用能力。 */
 export interface UseSchedulesInject {
-  /** 向宿主执行一条 slash 命令；返回是否受理。 */
-  callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 向宿主执行一条 slash 命令；返回是否受理（`matched`）。 */
+  callCommand: (sessionId: string, line: string) => Promise<CommandOutcome>;
   /** 会话 id。 */
   sessionId?: string;
   /** 输入动作：清空输入框。 */
@@ -144,7 +145,7 @@ export function useSchedules(inject: UseSchedulesInject): UseSchedulesResult {
         if (cancelled) return;
         try {
           const accepted = await callCommand(sessionId, createLine(item.payload));
-          if (accepted && !cancelled) {
+          if (accepted.matched && !cancelled) {
             removePending(item.clientSeq);
             setPendingSync((prev) => prev.filter((p) => p.clientSeq !== item.clientSeq));
           }
@@ -173,7 +174,7 @@ export function useSchedules(inject: UseSchedulesInject): UseSchedulesResult {
     setBusy(true);
     try {
       const accepted = await callCommand(sessionId, createLine(inputPayload));
-      if (!accepted) {
+      if (!accepted.matched) {
         // 命令未被受理（网络/宿主异常）→ 降级暂存本地
         appendPending(inputPayload);
         setPendingSync((prev) => [...prev, { clientSeq: Date.now(), createdAt: Date.now(), payload: inputPayload }]);

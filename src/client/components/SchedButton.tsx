@@ -10,14 +10,15 @@ import type { JSX } from 'react';
 import { detectTimeZone } from '../../time-utils.js';
 import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import type { ClientSchedule, CreateCommandPayload } from '../types.js';
+import type { CommandOutcome } from '../../command-outcome.js';
 import { SchedPanel } from './SchedPanel.js';
 import { useSchedules } from '../hooks/useSchedules.js';
 import { useSchedulerSettings, type SchedulerSettingsScopeLike } from '../hooks/useSchedulerSettings.js';
 
 /** 应用层注入的调用能力。 */
 export interface SchedButtonInjected {
-  /** 向宿主执行一条 slash 命令；返回是否受理。 */
-  callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 向宿主执行一条 slash 命令；返回是否受理（`matched`）。 */
+  callCommand: (sessionId: string, line: string) => Promise<CommandOutcome>;
   /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
   locale?: LocaleFaceLike;
   /** 插件设置 scope（设置页保存后智能时段即时生效；缺失回退默认）。 */

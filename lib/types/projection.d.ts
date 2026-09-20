@@ -86,7 +86,19 @@ export declare function initUserScheduleProjection(header?: {
  * 增量 fold。返回同一引用当事件无关；返回新状态当 owned/active 发生变化。
  */
 export declare function applyUserScheduleProjection(state: UserScheduleProjectionState, event: SessionEvent): UserScheduleProjectionState;
-/** 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。 */
+/**
+ * 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。
+ *
+ * ⚠️ 这里是**唯一**能让「删除暂停项」生效的地方。原因链：
+ *  - 删除暂停项只清 sidecar、**不写会话事件**（补写 `schedule/change` delete 会
+ *    因为该 id 在 pause 时已被删除而抛 `targets inactive id`，把日志读坏）；
+ *  - 投影 cell 只在事件到达时由 `apply` 推进，且跨进程持久化（projcache），
+ *    客户端又按 seq「更高者胜」消费控制帧——没有新事件就没有新帧；
+ *  - 于是 `state.paused` 会永久停留在最后一次事件时的快照上。
+ * 因此 view 不能直接信任 `state.paused`，必须**以 sidecar 为准重读**：
+ * sidecar 是暂停留档的权威存储（`ownship-store`），`state.paused` 只是镜像。
+ * 这样无论 cell 多陈旧，读出来的 paused 列表都与真实留档一致。
+ */
 export declare function viewUserScheduleProjection(state: UserScheduleProjectionState): UserScheduleProjectionValue;
 /**
  * 投影单元声明（传给 sessionProjections.register）。

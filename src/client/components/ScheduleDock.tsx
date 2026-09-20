@@ -15,6 +15,7 @@ import { detectTimeZone, formatHhmm } from '../../time-utils.js';
 import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
+import type { CommandOutcome } from '../../command-outcome.js';
 import type { ClientSchedule } from '../types.js';
 
 /** 精确剩余时长：超过 1 小时 `H:MM:SS`，否则 `MM:SS`（负值截为 00:00）。 */
@@ -111,16 +112,16 @@ function frozenBarSegments(
 
 /** 应用层注入的调用能力。 */
 export interface ScheduleDockInjected {
-  /** 向宿主执行一条 slash 命令；返回是否受理。 */
-  callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 向宿主执行一条 slash 命令；返回是否受理（`matched`）。 */
+  callCommand: (sessionId: string, line: string) => Promise<CommandOutcome>;
   /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
   locale?: LocaleFaceLike;
 }
 
 /** 会话作用域插槽条目收到的标准 props + 注入。 */
 export interface ScheduleDockProps extends Omit<ScheduleDockInjected, 'locale'> {
-  /** 向宿主执行一条 slash 命令；返回是否受理。 */
-  callCommand: (sessionId: string, line: string) => Promise<boolean>;
+  /** 向宿主执行一条 slash 命令；返回是否受理（`matched`）。 */
+  callCommand: (sessionId: string, line: string) => Promise<CommandOutcome>;
   /** 宿主 locale 服务（跟随 DSH 界面语言；缺失回退中文）。 */
   locale?: LocaleFaceLike;
   /** 会话作用域标准 hook：读取投影。 */
@@ -148,8 +149,34 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
   const now = useNow(1000);
   const { t } = useSchedT(locale);
   const projection = typeof useProjection === 'function' ? useProjection('userSchedules') : undefined;
-  // 删除暂停项只改 sidecar、不写会话事件 → 投影不会立刻更新；成功后本地先摘掉
+  /**
+   * 删除暂停项的本地摘除集合。
+   *
+   * 根因修复已在宿主侧（`viewUserScheduleProjection` 以 sidecar 为准重读
+   * `paused`），正常路径下宿主一清 sidecar，投影帧就把该行摘掉，这里只是让
+   * 「点了删除」在命令往返期间立刻有反馈，不必等下一帧。
+   *
+   * 为什么仍需客户端兜底：客户端按 seq「更高者胜」消费投影帧，若宿主那份 cell
+   * 尚未刷新，行可能短暂复活。摘除因此是**粘性**的，只在投影确实变化时解除：
+   *   - 投影里该 id 以 active 复现（resume 复用同一 uid）→ 立即解除；
+   *   - 该 id 在投影中消失或不再是 paused → 宿主已重算，摘除自然失效。
+   * 不按时间过期：投影没变就说明仍是同一份快照，过期只会让已删行复活。
+   */
   const [dismissedPaused, setDismissedPaused] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const live = projection?.schedules;
+    if (live === undefined) return;
+    setDismissedPaused((current) => {
+      if (current.size === 0) return current;
+      let changed = false;
+      const nextSet = new Set(current);
+      for (const item of live) {
+        // 只有「以 active 复现」才解除；仍是 paused 说明是同一份陈旧投影
+        if (item.status !== 'paused' && nextSet.delete(item.id)) changed = true;
+      }
+      return changed ? nextSet : current;
+    });
+  }, [projection]);
   const schedules = useMemo(
     () =>
       (projection?.schedules ?? [])
@@ -212,30 +239,25 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
 
   const handleCancel = (id: string, status?: 'active' | 'paused'): void => {
     setCancelling((current) => new Set(current).add(id));
-    // 暂停项：host 只清 sidecar、无会话事件 → 投影不刷新；成功后本地摘掉
+    /** 撤销本地摘除（命令未被受理时回滚，避免行无谓消失）。 */
+    const restore = (): void => {
+      setDismissedPaused((current) => {
+        if (!current.has(id)) return current;
+        const nextSet = new Set(current);
+        nextSet.delete(id);
+        return nextSet;
+      });
+    };
+    // 暂停项：先本地摘除给出即时反馈；宿主清 sidecar 后投影帧会自然收敛。
     if (status === 'paused') {
       setDismissedPaused((current) => new Set(current).add(id));
     }
     void callCommand(sessionId, deleteLine(id))
-      .then((ok) => {
-        if (!ok && status === 'paused') {
-          // 命令未受理则撤销本地摘除，避免误藏
-          setDismissedPaused((current) => {
-            const nextSet = new Set(current);
-            nextSet.delete(id);
-            return nextSet;
-          });
-        }
+      .then((outcome) => {
+        // 未被受理（无会话面/网络异常）→ 回滚，别让行白消失。
+        if (!outcome.matched) restore();
       })
-      .catch(() => {
-        if (status === 'paused') {
-          setDismissedPaused((current) => {
-            const nextSet = new Set(current);
-            nextSet.delete(id);
-            return nextSet;
-          });
-        }
-      })
+      .catch(restore)
       .finally(() => {
         window.setTimeout(() => {
           setCancelling((current) => {
@@ -262,8 +284,8 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       return next;
     });
     void callCommand(sessionId, steerLine(id))
-      .then((ok) => {
-        if (ok) {
+      .then((outcome) => {
+        if (outcome.matched) {
           setSteerDone((current) => new Set(current).add(id));
         } else {
           setSteerErr((current) => new Map(current).set(id, t.editErrNotAccepted));
@@ -291,8 +313,8 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       return next;
     });
     void callCommand(sessionId, pauseLine(id))
-      .then((ok) => {
-        if (!ok) {
+      .then((outcome) => {
+        if (!outcome.matched) {
           setPauseErr((current) => new Map(current).set(id, t.editErrNotAccepted));
         }
       })
@@ -317,8 +339,8 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       return next;
     });
     void callCommand(sessionId, resumeLine(uid))
-      .then((ok) => {
-        if (!ok) {
+      .then((outcome) => {
+        if (!outcome.matched) {
           setPauseErr((current) => new Map(current).set(uid, t.editErrNotAccepted));
         }
       })
@@ -354,8 +376,8 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
     }
     setSaving(true);
     setEditErr(null);
-    void callCommand(sessionId, editLine(id, trimmed)).then((ok) => {
-      if (!ok) setEditErr(format(t.editErrFailed, { message: t.editErrNotAccepted }));
+    void callCommand(sessionId, editLine(id, trimmed)).then((outcome) => {
+      if (!outcome.matched) setEditErr(format(t.editErrFailed, { message: t.editErrNotAccepted }));
       else cancelEdit();
     }).catch(() => {
       setEditErr(format(t.editErrFailed, { message: t.editErrCommandFailed }));

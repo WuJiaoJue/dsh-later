@@ -352,7 +352,19 @@ function seedIsBefore(state: UserScheduleProjectionState, event: SessionEvent): 
   return state.seedSeq >= 0 && typeof event.seq === 'number' && event.seq < state.seedSeq;
 }
 
-/** 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。 */
+/**
+ * 投影 view：活动 + 暂停（同列表；paused 靠 status 区分，dock 原地冻结）。
+ *
+ * ⚠️ 这里是**唯一**能让「删除暂停项」生效的地方。原因链：
+ *  - 删除暂停项只清 sidecar、**不写会话事件**（补写 `schedule/change` delete 会
+ *    因为该 id 在 pause 时已被删除而抛 `targets inactive id`，把日志读坏）；
+ *  - 投影 cell 只在事件到达时由 `apply` 推进，且跨进程持久化（projcache），
+ *    客户端又按 seq「更高者胜」消费控制帧——没有新事件就没有新帧；
+ *  - 于是 `state.paused` 会永久停留在最后一次事件时的快照上。
+ * 因此 view 不能直接信任 `state.paused`，必须**以 sidecar 为准重读**：
+ * sidecar 是暂停留档的权威存储（`ownship-store`），`state.paused` 只是镜像。
+ * 这样无论 cell 多陈旧，读出来的 paused 列表都与真实留档一致。
+ */
 export function viewUserScheduleProjection(
   state: UserScheduleProjectionState,
 ): UserScheduleProjectionValue {
@@ -360,7 +372,10 @@ export function viewUserScheduleProjection(
     .filter((record) => state.owned.includes(record.id))
     .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt))
     .map((record) => wireItemOf(record, state.sessionId));
-  const paused = state.paused.map(pausedWireItemOf);
+  // sidecar 权威：readFresh 带缓存但会按文件 mtime/内容失效，读到的是最新留档。
+  // sessionId 缺失（init 未注入）时退回镜像，保持旧行为。
+  const live = state.sessionId.length > 0 ? pausedFromSidecar(state.sessionId) : state.paused;
+  const paused = live.map(pausedWireItemOf);
   return { schedules: [...active, ...paused] };
 }
 

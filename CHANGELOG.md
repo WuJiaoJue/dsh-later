@@ -4,7 +4,17 @@
 
 ## 未发布
 
-- **fix** 删除暂停项后 dock 行不消失：host 只清 sidecar、无会话事件导致投影不刷新；删除成功后客户端本地摘掉该行。
+- **fix** 删除暂停项后 dock 行不消失（**根因修复**）：投影 view 改为**以 sidecar 为准**重读 `paused`，不再信任可能陈旧的 `state.paused` 镜像。
+  - 根因：删除暂停项只清 sidecar、不写会话事件——**也不能写**：该 id 在 pause 时已被
+    `dsh-schedule` 删除，补写 `delete` 会抛 `schedule delete targets inactive id`，让整份
+    日志读失败。
+  - 而投影 cell 只在事件到达时由 `apply` 推进，且会持久化进 projection cache；客户端又按
+    seq「更高者胜」消费控制帧 → 没有新事件就没有修正帧。宿主那份 `paused[]` 快照因此永久
+    陈旧，**刷新页面也会被缓存恢复**（此前表现为「删不掉、且刷新后复活」）。
+  - 修复：`viewUserScheduleProjection` 在 `sessionId` 可用时从 sidecar（留档的权威存储）
+    重读，`readFresh` 按 mtime/size 失效，删除即刻可见。旧快照不再可能让已删行复活。
+  - 客户端摘除相应收敛为「粘性直到投影变化」：仅当同 uid 以 active 复现（resume）才解除，
+    不再按时间过期——过期只会让陈旧投影里的已删行复活。
 - **fix** resume 先清 sidecar `paused` 再 append `create`，消除「已暂停 + 新活动」双行。
 - **fix** delete 支持 wire `uid`：活动任务先映射 scheduleId；暂停项直接清 sidecar（此前 `deleted:false`）。
 - **feat** 移除右下角 ⏰ 到达 toast；到点以对话消息为准。

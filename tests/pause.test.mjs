@@ -239,6 +239,39 @@ test('delete 支持 uid：活动任务与暂停项', async () => {
   assert.equal(getPaused(agent.session.header.id, p.uid), undefined);
 });
 
+/**
+ * 客户端按 `deleted` 决定是否回滚乐观摘除，因此「受理」与「真的删了」必须可区分：
+ * 删除一个已经不在（或不存在）的 uid 仍返回 ok:true，但必须 deleted:false。
+ * 若这里退化成「找不到也删成功」，UI 就会把一条仍存在的暂停提醒永久藏起来。
+ */
+test('delete 幂等语义：重复删除同一 uid 返回 deleted:false 而非静默成功', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '重复删除', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+
+  const first = await userScheduleDelete(p.uid, agent, fakeCtx);
+  assert.equal(first.deleted, true, '首次删除应真的删掉');
+
+  const second = await userScheduleDelete(p.uid, agent, fakeCtx);
+  assert.equal(second.ok, true, '重复删除不报错（幂等）');
+  assert.equal(second.deleted, false, '第二次什么都没删 → deleted:false');
+  assert.equal(second.code, 'schedule_not_found');
+
+  // 完全不存在的 id 同理
+  const ghost = await userScheduleDelete('00000000-0000-4000-8000-000000000000', agent, fakeCtx);
+  assert.equal(ghost.ok, true);
+  assert.equal(ghost.deleted, false);
+});
+
 test('投影 stateVersion 为 4 且 wire 带 status', async () => {
   freshOwnershipDir();
   const { userSchedulesProjectionUnit } = await import('../lib/projection.js');
@@ -261,4 +294,129 @@ test('投影 stateVersion 为 4 且 wire 带 status', async () => {
   const ownership = getOwnership(agent.session.header.id, created.id);
   assert.ok(ownership?.uid);
   assert.equal(view.schedules[0]?.id, ownership.uid);
+});
+
+/**
+ * 约束：**不能**为「删除暂停项」补写 `schedule/change` delete 事件。
+ *
+ * dsh-schedule 的 fold 要求 delete 命中仍 active 的 id，而暂停项的日志 id 在
+ * pause 时已被删除。补写会抛 `schedule delete targets inactive id`，使整份
+ * 日志读失败（GUI 表现为历史加载失败）。此测试守住「删除暂停项不写事件」。
+ */
+test('约束：删除暂停项不写会话事件（补写 delete 会读坏日志）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '别写事件', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+
+  const before = agent.session.events.length;
+  const del = await userScheduleDelete(p.uid, agent, fakeCtx);
+  assert.equal(del.deleted, true);
+  assert.equal(
+    agent.session.events.length,
+    before,
+    '删除暂停项只清 sidecar；补写 delete 事件会让 dsh-schedule fold 抛错',
+  );
+
+  // 日志仍可被上游 fold（整份可读）
+  const folded = foldScheduleEvents(agent.session.events);
+  assert.deepEqual(folded.active, []);
+
+  // 从日志重放时投影会重读 sidecar → 结果正确（无残留行）。
+  // ⚠️ 但**运行时**的投影 cell 只在事件到达时推进，sidecar 变化不会触发重算，
+  // 所以线上那份 cell 会一直留着 paused 行；这正是客户端必须自行摘除的原因。
+  let state = initUserScheduleProjection(agent.session.header);
+  for (const event of agent.session.events) state = applyUserScheduleProjection(state, event);
+  const view = viewUserScheduleProjection(state);
+  assert.equal(
+    view.schedules.length,
+    0,
+    '重放日志（apply 会重读 sidecar）应得到干净结果',
+  );
+  assert.equal(getPaused(agent.session.header.id, p.uid), undefined, 'sidecar 已清');
+});
+
+/**
+ * 约束：暂停项删除后，**同一 uid** 被 resume 时必须能重新看到 active 行。
+ * （客户端摘除集合按 uid 粘性存在，这里是它必须解除的依据。）
+ */
+test('约束：删除暂停项后同 uid resume，投影出现 active 行', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '删了再恢复', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  await userScheduleDelete(p.uid, agent, fakeCtx);
+  // 删除后 paused 已清，resume 会报 not_paused（无法复活）——这是既有语义
+  const resumed = await userScheduleResume(p.uid, agent, fakeCtx);
+  assert.equal(resumed.ok, false);
+  assert.equal(resumed.code, 'not_paused');
+});
+
+/**
+ * 回归（根因）：view 必须以 sidecar 为准重读 paused，不能信任可能陈旧的
+ * `state.paused` 镜像。
+ *
+ * 线上表现：删除暂停项后行不消失，且**刷新页面也还在**——因为宿主把陈旧的
+ * `paused[]` 持久化进 projection cache（projcache）并按 seq 重新下发，而客户端
+ * 按「更高 seq 胜」消费控制帧，删除不产生新事件 → 永远收不到修正帧。
+ *
+ * 这里直接构造「state.paused 陈旧 + sidecar 已清」的场景，断言 view 不残留。
+ */
+test('回归：state.paused 陈旧时，view 以 sidecar 为准（删除暂停项可见生效）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '陈旧镜像', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+
+  await userScheduleDelete(p.uid, agent, fakeCtx);
+
+  // 模拟线上的陈旧 cell：sidecar 已清，但 state.paused 还留着旧镜像
+  const stale = {
+    sessionId: agent.session.header.id,
+    owned: [],
+    active: [],
+    seedSeq: -1,
+    paused: [
+      {
+        uid: p.uid,
+        prompt: '陈旧镜像',
+        delivery: 'context',
+        kind: 'after',
+        remainingSeconds: 100,
+        originalScheduledAt: new Date(Date.now() + 600_000).toISOString(),
+        lastScheduleId: p.schedule_id,
+        pausedAt: Date.now(),
+      },
+    ],
+  };
+  const view = viewUserScheduleProjection(stale);
+  assert.equal(
+    view.schedules.length,
+    0,
+    'view 必须按 sidecar 重读：陈旧 paused 镜像不得让已删除的行复活',
+  );
 });

@@ -20,7 +20,8 @@
     "src/presence.ts",
     "src/smart-window.ts",
     "src/time-utils.ts",
-    "src/domain.ts"
+    "src/domain.ts",
+    "src/command-outcome.ts"
   ],
   "exclude": ["node_modules", "lib", "tests"]
 }
