@@ -4,6 +4,16 @@
 
 ## 未发布
 
+- **feat** 暂停项支持「编辑文案」与「插话发送」（此前两者都被禁用，属实现缺口）。
+  - **编辑**：暂停项不在日志里（pause 时已 delete），旧实现必然 `schedule_not_found`，
+    客户端只好禁用按钮。现改为直接改写 sidecar 的 `PausedEntry.prompt`——不动时刻、
+    不动剩余秒数、不动 uid、不写会话事件，因此冻结进度与恢复后的窗口都不受影响。
+  - **插话发送**：语义是「不等倒计时立即推送」，对暂停项恰恰最需要。现从 sidecar 留档
+    取材构造消息（`user` 代发 / `context` 注入两形态与常规路径一致），投递成功后清掉留档
+    （提醒已送达、应出列）。
+  - 客户端：两处按钮解除 `disabled`；因宿主**不写会话事件**、投影不会立刻刷新，
+    补了本地文案覆盖（`promptOverrides`）与本地摘除复用（`dismissedPaused`），
+    待投影对账后自然失效。
 - **fix** 暂停 / 恢复后进度条长度会变（**两处根因**）：
   - **窗口缩水（宿主）**：resume 用 `after_seconds = remaining` 重建日志记录，原窗口
     另存 `ownership.windowSeconds`；而 pause 却从日志的 `afterSeconds` 取窗口，

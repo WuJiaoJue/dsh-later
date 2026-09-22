@@ -95,7 +95,10 @@ const COMPONENTS = [
 '.ss-dock-bar-fill {',
 '  position: relative; z-index: 1;',
 '  height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary);',
-'  transition: width 1s linear;',
+/* 活动期的推进由 CSS 动画驱动（见 ScheduleDock 的 fillStyle）：
+   旧实现是「每秒 tick 改一次宽度 + transition 补间」，1 分钟任务每秒跳约 8px，
+   肉眼可见锯齿。改为动画后由合成器逐帧插值，真 60fps 且零重渲染。
+   这里**不保留** transition: width —— 它与动画叠加会造成双重补间、反而更抖。 */
 '  /* 极短任务/早期暂停时进度比接近 0：给最小可见宽度，且 active 与 paused 同一规则，',
 '     避免暂停前后保底阈值不一致导致条长跳变。 */',
 '  min-width: 10px;',
@@ -103,6 +106,15 @@ const COMPONENTS = [
 '/* 暂停 hatch：几何对齐 demo（6px 轨道、只改 fill、115° 5px 条纹），',
 '   但暗色主题下 alias-line-secondary 几乎贴背景——fill 用更高对比条纹 +',
 '   略深底，轨道不动，避免像换了另一套组件。 */',
+/* 进度推进关键帧：从 0 线性走到 100%；配合负 animation-delay 把播放头
+   拉到当前进度（等价于「已过去/总窗口」）。 */
+'@keyframes ss-dock-bar-progress { from { width: 0%; } to { width: 100%; } }',
+'@media (prefers-reduced-motion: reduce) {',
+'  /* 无障碍：关掉逐帧推进，退回「静态宽度 + 无动画」。',
+'     注意此时宽度由 animation-fill-mode 决定会停在 0，故由 JS 侧改为直接给 width；',
+'     这里只需禁用动画本身。 */',
+'  .ss-dock-bar-fill { animation: none !important; }',
+'}',
 '.ss-dock-row.ss-paused .ss-dock-bar-fill {',
 '  background:',
 '    repeating-linear-gradient(',

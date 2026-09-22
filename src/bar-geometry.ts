@@ -146,3 +146,58 @@ export function frozenBarSegments(
     count: Math.max(1, Math.ceil(totalMs / BAR_UNIT_MS)),
   };
 }
+
+/**
+ * 活动期「CSS 动画」计划：把进度条的推进交给 CSS，而不是每秒一次 JS 重渲染。
+ *
+ * 为什么需要：旧实现由 `useNow(1000)` 每秒更新一次 `now`，宽度随之每秒跳一次，
+ * 再用 `transition: width 1s linear` 补间。1 分钟任务的轨道上每秒要跳约 8px，
+ * 形成肉眼可见的锯齿/顿挫（长条上尤其明显）。
+ *
+ * ⚠️ 关键约束一：参数必须**只依赖任务自身的时间轴**（`start` / `end`），
+ * 不能依赖「当前渲染时刻」。否则每次 tick 重渲染都会改变参数 → 浏览器重启动画
+ * → 每秒一次固定跳变（实测 deltas 呈 `1.7×5, 10.2` 周期尖峰）。
+ *
+ * ⚠️ 关键约束二：**CSS 动画在元素被重建时会从头播放**。切到别的会话再切回来，
+ * dock 会卸载并重新挂载，动画 `currentTime` 归零——若只靠"动画自己走"，进度条
+ * 会退回 0% 附近（实测：真实已过 184s/600s 应为 30.7%，切回后却显示 2.55%，
+ * 恰好等于「重挂载后流逝的 15.3s / 600s」）。因此必须用**负 `animation-delay`**
+ * 在挂载瞬间就把播放头**定位到正确的绝对相位**：
+ *
+ *   delay = -(已过去时长)   →   一上屏就处在 elapsed/total 处
+ *
+ * 这样无论挂载多少次、间隔多久，画面都落在任务真实时间轴的正确位置。
+ *
+ * 由于负 delay 只由 `start`/`end`/`now` 决定，而这三者都是绝对时间，
+ * 「切走再切回」与「一直看着」得到的相位完全一致。
+ */
+export interface BarAnimationPlan {
+  /** 动画总时长（ms）＝ 完整窗口，保证播放头按绝对进度线性推进。 */
+  readonly durationMs: number;
+  /** 负延迟（ms）：把播放头定位到「已过去」处，抵消重挂载导致的归零。 */
+  readonly delayMs: number;
+}
+
+/**
+ * 依据窗口与当前时刻推导动画计划。
+ *
+ * @param totalMs - 总窗口毫秒（> 0）。
+ * @param elapsedMs - 已过去毫秒（钳到 [0, totalMs]）。
+ * @returns 计划；`totalMs <= 0`、非有限值、或已到点（剩余为 0）时返回 `undefined`。
+ */
+export function planBarAnimation(
+  totalMs: number,
+  elapsedMs: number,
+): BarAnimationPlan | undefined {
+  if (!Number.isFinite(totalMs) || totalMs <= 0) return undefined;
+  const raw = Number.isFinite(elapsedMs) ? elapsedMs : 0;
+  const clamped = Math.min(Math.max(raw, 0), totalMs);
+  const elapsed = clamped === 0 ? 0 : clamped;
+  // 已到点：没有可推进的时长，退回静态宽度（100%）
+  if (elapsed >= totalMs) return undefined;
+  return {
+    durationMs: totalMs,
+    // -0 会在 CSS 里序列化成难看的 "-0ms"，故显式归零
+    delayMs: elapsed === 0 ? 0 : -elapsed,
+  };
+}
