@@ -13,6 +13,7 @@ import { foldScheduleEvents } from '@deepseek-ai/dsh-schedule';
 import {
   userScheduleCreate,
   userScheduleDelete,
+  userScheduleEditPrompt,
   userSchedulePause,
   userScheduleResume,
 } from '../lib/user-tools.js';
@@ -509,4 +510,117 @@ test('投影 wire：暂停行的 window_seconds 恒为原窗口（供进度条�
   assert.equal(paused.length, 1);
   assert.equal(paused[0]?.window_seconds, 120, 'wire 必须给出原窗口，进度条据此算比例');
   assert.equal(paused[0]?.id, p2.uid);
+});
+
+/**
+ * 编辑暂停项：只改 sidecar 的 prompt，不动时刻/剩余/uid，也不写会话事件。
+ *
+ * 背景：暂停项在日志里不存在（pause 时被 delete），所以旧实现直接返回
+ * schedule_not_found，客户端只好把编辑按钮禁用——"暂停了不能改文案"是缺口而非设计。
+ */
+test('编辑暂停项：可改文案，且窗口/剩余/uid 均不受影响', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '原始文案', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  const before = getPaused(agent.session.header.id, p.uid);
+  assert.ok(before);
+  const eventsBefore = agent.session.events.length;
+
+  const edited = await userScheduleEditPrompt(p.uid, '改后的文案', agent, fakeCtx);
+  assert.ok(edited.ok, `编辑暂停项应成功，实际 ${JSON.stringify(edited)}`);
+
+  const after = getPaused(agent.session.header.id, p.uid);
+  assert.ok(after);
+  assert.equal(after.prompt, '改后的文案', 'prompt 应已更新');
+  // 关键不变量：其余字段逐字保留
+  assert.equal(after.uid, before.uid, 'uid 不变');
+  assert.equal(after.remainingSeconds, before.remainingSeconds, '剩余秒数不变');
+  assert.equal(after.lastScheduleId, before.lastScheduleId, '日志 id 不变');
+  assert.equal(after.pausedAt, before.pausedAt, '暂停时刻不变');
+  assert.equal(after.originalAfterSeconds, before.originalAfterSeconds, '原窗口不变');
+  assert.equal(
+    agent.session.events.length,
+    eventsBefore,
+    '编辑暂停项不写会话事件（写了会让 dsh-schedule fold 抛错）',
+  );
+});
+
+test('编辑暂停项：认 wire 的 uid（GUI 传的就是它）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: 'a', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  const edited = await userScheduleEditPrompt(p.uid, 'b', agent, fakeCtx);
+  assert.ok(edited.ok);
+  assert.equal(getPaused(agent.session.header.id, p.uid)?.prompt, 'b');
+});
+
+test('编辑暂停项：空文案仍被拒（沿用 create 的校验）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: 'a', after_seconds: 600, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  const bad = await userScheduleEditPrompt(p.uid, '   ', agent, fakeCtx);
+  assert.equal(bad.ok, false);
+  assert.equal(getPaused(agent.session.header.id, p.uid)?.prompt, 'a', '文案不应被改动');
+});
+
+test('编辑不存在的 id：仍返回 schedule_not_found（不误判为暂停项）', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const ghost = await userScheduleEditPrompt('no-such-id', 'x', agent, fakeCtx);
+  assert.equal(ghost.ok, false);
+  assert.equal(ghost.code, 'schedule_not_found');
+});
+
+test('编辑暂停项后 resume：新文案生效且窗口守恒', async () => {
+  freshOwnershipDir();
+  const agent = fakeAgent();
+  const created = await userScheduleCreate(
+    { prompt: '旧', after_seconds: 120, time_zone: 'Asia/Shanghai' },
+    agent,
+    fakeCtx,
+  );
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const p = await userSchedulePause(created.id, agent, fakeCtx);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  await userScheduleEditPrompt(p.uid, '新文案', agent, fakeCtx);
+  const resumed = await userScheduleResume(p.uid, agent, fakeCtx);
+  assert.ok(resumed.ok, `resume 应成功，实际 ${JSON.stringify(resumed)}`);
+  if (!resumed.ok) return;
+  // 恢复后的记录应带新文案
+  const rec = foldScheduleEvents(agent.session.events).active.find((r) => r.id === resumed.schedule_id);
+  assert.ok(rec);
+  assert.equal(rec.prompt, '新文案', 'resume 重建时用的是编辑后的文案');
+  // 窗口守恒（编辑不碰 originalAfterSeconds）
+  const owns = getOwnership(agent.session.header.id, resumed.schedule_id);
+  assert.equal(owns?.windowSeconds, 120, '原窗口仍为 120');
+  assert.equal(owns?.uid, p.uid, 'uid 保持');
 });

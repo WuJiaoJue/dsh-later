@@ -98,6 +98,21 @@ export declare class UserScheduleRuntime {
     /** 执行一次用户提醒决策与派发。 */
     private driveOnce;
     /**
+     * 暂停项的插话投递。
+     *
+     * 暂停项不在日志里（其日志记录在 pause 时被删），所以从 sidecar 留档取材：
+     * `PausedEntry` 已含 `prompt` 与 `delivery`，足以构造消息。呈现方式与
+     * {@link buildMessage} 的 one-shot 分支保持一致（`user` 代发 vs `context` 注入），
+     * 避免两条路径的语义分叉。
+     *
+     * 投递成功后清掉留档：提醒已送达，不应再留在待发送列表。这与 dispatch 会把记录
+     * 移出 `active` 语义一致。（清留档不写会话事件，故投影不会自动刷新——客户端已用
+     * 本地摘除 + 投影对账处理同类情况，与"删除暂停项"同源。）
+     *
+     * @returns `undefined` 表示该 id 不是暂停项，交由调用方走常规日志路径。
+     */
+    private steerPausedById;
+    /**
      * 构造注入的消息，按投递形态分流：
      *  - `user`（`/later` 显式请求的延迟发送）：原样内容 + `source.kind='user'`，
      *    让 GUI 呈现为「我」发出的普通气泡（产品取舍：用户明确要求以本人身份）。

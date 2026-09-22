@@ -5,6 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dueUserDecision, UserScheduleRuntime } from '../lib/runtime.js';
 import { foldScheduleEvents } from '@deepseek-ai/dsh-schedule';
+import { getPaused, recordPaused } from '../lib/ownership-store.js';
+import { freshOwnershipDir } from './helpers/ownership-state.mjs';
 
 const S = (over = {}) => ({
   id: 's1',
@@ -299,6 +301,92 @@ test('steer：不存在的 id 拒绝', async () => {
   const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
   const result = await runtime.steerById('ghost');
 
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'schedule_not_found');
+  assert.equal(agent.steered.length, 0);
+  await runtime.dispose();
+});
+
+/* ==================== 暂停项插话（本轮新增） ==================== */
+/**
+ * 暂停项不在日志里（日志记录在 pause 时被删），所以插话必须改从 sidecar 留档取材。
+ * 语义上"插话"= 不等倒计时立即推送，对暂停项恰恰最需要。
+ */
+const SID_STEER_PAUSED = 'session-paused-steer-1';
+
+/** 带 sessionId 的 FakeSession（暂停路径需要 header.id 才能读 sidecar）。 */
+class FakeSessionWithId extends FakeSession {
+  constructor(seed = []) {
+    super(seed);
+    this.header = { id: SID_STEER_PAUSED, seedLength: 0 };
+  }
+}
+
+test('暂停项插话：从 sidecar 取材投递，成功后清掉留档', async () => {
+  freshOwnershipDir();
+  const session = new FakeSessionWithId([]);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+
+  // 造一条暂停留档（等价于用 /later 建好再暂停后的状态）
+  recordPaused(SID_STEER_PAUSED, {
+    uid: 'uid-paused-1',
+    prompt: '暂停中的提醒内容',
+    delivery: 'context',
+    kind: 'after',
+    remainingSeconds: 90,
+    originalScheduledAt: new Date(Date.now() + 90_000).toISOString(),
+    originalAfterSeconds: 120,
+    lastScheduleId: 'schedule-7',
+    pausedAt: Date.now(),
+  });
+
+  const result = await runtime.steerById('uid-paused-1');
+  assert.deepEqual(result, { ok: true, id: 'uid-paused-1', steered: true });
+  // 以「立即消费」形态投给 agent（steer，不是 followup）
+  assert.equal(agent.steered.length, 1);
+  assert.equal(agent.messages.length, 0);
+  // context 形态 → 走注入防护 framing
+  assert.match(agent.steered[0].content[0].text, /\[SCHEDULE REMINDER\]/);
+  // 投递成功即出列
+  assert.equal(getPaused(SID_STEER_PAUSED, 'uid-paused-1'), undefined, '留档应被清掉');
+  // 不写会话事件（与删除暂停项同理：该 id 不在日志里，补写会让 fold 抛错）
+  assert.equal(session.events.length, 0, '不得写会话事件');
+  await runtime.dispose();
+});
+
+test('暂停项插话：delivery=user 时以本人身份代发', async () => {
+  freshOwnershipDir();
+  const session = new FakeSessionWithId([]);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  recordPaused(SID_STEER_PAUSED, {
+    uid: 'uid-paused-2',
+    prompt: '关火',
+    delivery: 'user',
+    kind: 'after',
+    remainingSeconds: 30,
+    originalScheduledAt: new Date(Date.now() + 30_000).toISOString(),
+    originalAfterSeconds: 60,
+    lastScheduleId: 'schedule-8',
+    pausedAt: Date.now(),
+  });
+  const result = await runtime.steerById('uid-paused-2');
+  assert.deepEqual(result, { ok: true, id: 'uid-paused-2', steered: true });
+  assert.equal(agent.steered.length, 1);
+  // user 形态：原样内容，不加 reminder framing
+  assert.equal(agent.steered[0].content[0].text, '关火');
+  assert.equal(agent.steered[0].source?.kind, 'user');
+  assert.equal(getPaused(SID_STEER_PAUSED, 'uid-paused-2'), undefined);
+  await runtime.dispose();
+});
+
+test('暂停项插话：不存在的 id 仍走日志路径并返回 schedule_not_found', async () => {
+  freshOwnershipDir();
+  const session = new FakeSessionWithId([]);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  const result = await runtime.steerById('ghost');
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.code, 'schedule_not_found');
   assert.equal(agent.steered.length, 0);

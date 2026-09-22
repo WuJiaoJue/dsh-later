@@ -619,6 +619,39 @@ export async function userScheduleEditPrompt(
     }
     const existing = folded.active.find((record) => record.id === scheduleId);
     if (existing === undefined) {
+      /**
+       * 暂停项的编辑：只改 sidecar 里的 `prompt`。
+       *
+       * 为什么单独走一条路：暂停 = 日志 `delete` + sidecar 留档（方案 B），所以
+       * 暂停项**在日志里不存在**，`folded.active` 必然找不到它。但内容本就存在
+       * `PausedEntry.prompt`（resume 时用它重建记录），因此直接改写该字段即可——
+       * 不动时刻、不动剩余秒数、不动 uid、不产生任何会话事件。
+       *
+       * 这也消掉了"暂停了就不能改文案"这个反直觉的限制。
+       */
+      const sessionId = agent.session.header?.id;
+      const paused = getPaused(sessionId, id);
+      if (paused !== undefined) {
+        // 仅替换 prompt，其余字段（remainingSeconds / pausedAt / uid / 原窗口）
+        // 原样保留 → 冻结进度与恢复后的窗口都不受影响。
+        recordPaused(sessionId, { ...paused, prompt: trimmed });
+        // 复用与日志记录一致的序列化，避免两处形状漂移。
+        return {
+          ok: true,
+          ...serializeScheduleView(
+            scheduleView(
+              {
+                id: paused.lastScheduleId,
+                kind: 'after',
+                prompt: trimmed,
+                afterSeconds: paused.originalAfterSeconds ?? paused.remainingSeconds,
+                scheduledAt: paused.originalScheduledAt,
+              } as ScheduleRecord,
+              Date.now(),
+            ),
+          ),
+        };
+      }
       return { ok: false, code: 'schedule_not_found', message: `未找到定时任务 ${scheduleId}。` };
     }
     // P0-4：已过期（overdue）的 at 任务禁止改内容——「保留原时刻」会让新记录

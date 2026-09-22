@@ -10,13 +10,19 @@
  * @module dsh-later/client/components/ScheduleDock
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { JSX } from 'react';
+import type { CSSProperties, JSX } from 'react';
 import { detectTimeZone, formatHhmm } from '../../time-utils.js';
 import { format, type SchedStrings } from '../strings.js';
 import { useNow } from '../useCountdown.js';
 import { useSchedT, type LocaleFaceLike } from '../useSchedT.js';
 import type { CommandOutcome } from '../../command-outcome.js';
-import { barSegments, frozenBarSegments } from '../../bar-geometry.js';
+import {
+  barSegments,
+  barWindow,
+  frozenBarSegments,
+  planBarAnimation,
+  type BarAnimationPlan,
+} from '../../bar-geometry.js';
 import type { ClientSchedule } from '../types.js';
 
 /** 精确剩余时长：超过 1 小时 `H:MM:SS`，否则 `MM:SS`（负值截为 00:00）。 */
@@ -28,6 +34,50 @@ function formatCountdown(ms: number): string {
   const mm = String(m).padStart(2, '0');
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * 用户是否要求「减少动态效果」。
+ *
+ * 若为 true，活动期**不用** CSS 动画推进，直接给静态宽度——否则 `@media
+ * (prefers-reduced-motion)` 里把动画一关，`animation-fill-mode` 会让宽度停在
+ * keyframes 的起始值（0%），进度条整条消失。故必须在 JS 侧就改走静态路径。
+ */
+function prefersReducedMotion(): boolean {
+  try {
+    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 活动期动画计划：把「起点 → 目标时刻」交给 CSS 线性推进。
+ *
+ * 两个参数各司其职，**缺一不可**（两边都踩过坑）：
+ *
+ *  - `duration` 必须是**固定的完整窗口**（`end - start`）。若让它随 tick 变化，
+ *    浏览器每次都视为新动画并**重启**，产生每秒一次的固定跳变
+ *    （实测 deltas 呈 `1.7×5, 10.2` 周期尖峰）。
+ *
+ *  - `delay` 必须用**当前时刻**算出「已过去」量（`-(now - start)`），把播放头
+ *    定位到正确的绝对相位。CSS 动画在元素被重建时会从头播放，而"切走会话再切回"
+ *    会卸载并重挂载 dock；若 delay 不用 now，重挂载后相位就退回起点
+ *    （实测：真实已过 70s 的 30 分钟任务，切回后仍显示 1.96%，应为 7.56%）。
+ *
+ * 曾把 delay 也改成"恒定值"以求参数稳定——那是错的：恒定值会让「已过去」恒为 0，
+ * 负 delay 形同虚设，重挂载必然回到起点。**duration 固定 + delay 随 now 变化**
+ * 才是同时满足"不重启"与"不归零"的唯一组合。
+ */
+function planBarAnimationFor(
+  item: ClientSchedule,
+  now: number,
+  firstSeen: ReadonlyMap<string, number>,
+): BarAnimationPlan | undefined {
+  const end = Date.parse(item.scheduled_at);
+  if (!Number.isFinite(end)) return undefined;
+  const { start, totalMs } = barWindow(item, end, now, firstSeen);
+  return planBarAnimation(totalMs, now - start);
 }
 
 /** 应用层注入的调用能力。 */
@@ -97,14 +147,42 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       return changed ? nextSet : current;
     });
   }, [projection]);
+  /**
+   * 本地文案覆盖：编辑**暂停项**时宿主只改 sidecar、不写会话事件，因此投影里的
+   * `prompt` 仍是旧值——只依赖投影的话，保存后行内还显示旧文案。这里按 id 记住
+   * 新文案；一旦投影给出的 prompt 与之相同（说明宿主已重算）或该行消失，即失效。
+   */
+  const [promptOverrides, setPromptOverrides] = useState<ReadonlyMap<string, string>>(new Map());
+  useEffect(() => {
+    const live = projection?.schedules;
+    if (live === undefined || promptOverrides.size === 0) return;
+    setPromptOverrides((current) => {
+      if (current.size === 0) return current;
+      let changed = false;
+      const nextMap = new Map(current);
+      for (const [id, text] of current) {
+        const item = live.find((s) => s.id === id);
+        // 行消失，或投影已采纳新文案 → 覆盖不再需要
+        if (item === undefined || item.prompt === text) {
+          nextMap.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? nextMap : current;
+    });
+  }, [projection, promptOverrides]);
   const schedules = useMemo(
     () =>
       (projection?.schedules ?? [])
         .filter((item) => !(item.status === 'paused' && dismissedPaused.has(item.id)))
+        .map((item) => {
+          const override = promptOverrides.get(item.id);
+          return override === undefined ? item : { ...item, prompt: override };
+        })
         .sort(
           (a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at),
         ) as ClientSchedule[],
-    [projection, dismissedPaused],
+    [projection, dismissedPaused, promptOverrides],
   );
 
   const [collapsed, setCollapsed] = useState(true);
@@ -229,6 +307,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
    */
   const handleSteer = (item: ClientSchedule): void => {
     const id = item.id;
+    const wasPaused = item.status === 'paused';
     setSteering((current) => new Set(current).add(id));
     setSteerErr((current) => {
       const next = new Map(current);
@@ -239,6 +318,14 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
       .then((outcome) => {
         if (outcome.matched) {
           setSteerDone((current) => new Set(current).add(id));
+          /**
+           * 暂停项插话成功后，宿主会清掉 sidecar 留档（提醒已送达、应出列），
+           * 但**不写会话事件** → 投影不会立刻刷新，该行会继续显示。
+           * 与"删除暂停项"同源，故复用同一套本地摘除。
+           */
+          if (wasPaused) {
+            setDismissedPaused((current) => new Set(current).add(id));
+          }
         } else {
           setSteerErr((current) => new Map(current).set(id, t.editErrNotAccepted));
         }
@@ -329,8 +416,13 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
     setSaving(true);
     setEditErr(null);
     void callCommand(sessionId, editLine(id, trimmed)).then((outcome) => {
-      if (!outcome.matched) setEditErr(format(t.editErrFailed, { message: t.editErrNotAccepted }));
-      else cancelEdit();
+      if (!outcome.matched) {
+        setEditErr(format(t.editErrFailed, { message: t.editErrNotAccepted }));
+        return;
+      }
+      // 编辑暂停项时宿主不写会话事件 → 投影仍是旧文案，本地先覆盖以立刻反映新内容。
+      setPromptOverrides((current) => new Map(current).set(id, trimmed));
+      cancelEdit();
     }).catch(() => {
       setEditErr(format(t.editErrFailed, { message: t.editErrCommandFailed }));
     }).finally(() => setSaving(false));
@@ -406,7 +498,6 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
             className="ss-dock-action"
             title={t.editTask}
             aria-label={t.editTask}
-            disabled={isPaused}
             onClick={() => startEdit(item)}
           >
             <QueueEditIcon />
@@ -449,7 +540,7 @@ export function ScheduleDock({ callCommand, sessionId, useProjection, locale }: 
               className={`ss-dock-action ss-dock-action-steer${steering.has(item.id) ? ' ss-pending' : ''}${steerDone.has(item.id) ? ' ss-done' : ''}`}
               title={steerDone.has(item.id) ? t.steerAlreadySent : t.steerTask}
               aria-label={steerDone.has(item.id) ? t.steerAlreadySent : t.steerTask}
-              disabled={isPaused || steering.has(item.id) || steerDone.has(item.id)}
+              disabled={steering.has(item.id) || steerDone.has(item.id)}
               onClick={() => handleSteer(item)}
             >
               <QueueSendIcon />
@@ -509,9 +600,42 @@ function MultiBar({
   /** 客户端已渲染过的最新时刻；冻结帧据此钳位，避免暂停瞬间条长跳增。 */
   renderedAt: number;
 }): JSX.Element {
-  const { totalRatio, count } = frozen
+  const frozenSeg = frozen
     ? frozenBarSegments(item, frozenLeftMs ?? 0, firstSeen, renderedAt)
-    : barSegments(item, now, firstSeen);
+    : undefined;
+  const activeSeg = frozen ? undefined : barSegments(item, now, firstSeen);
+  const { totalRatio, count } = frozenSeg ?? activeSeg ?? { totalRatio: 0, count: 1 };
+
+  /**
+   * 活动期：用 CSS 动画推进，替代「每秒一次 JS 重渲染 + transition 补间」。
+   *
+   * ⚠️ 关键：动画参数必须**只依赖任务自身的时间轴**（起点 + 目标时刻），
+   * 绝不能依赖 `now`。否则每次 tick 重渲染都会算出新的 `from`/`duration`，
+   * 浏览器会把动画**重启**——表现为每秒一次固定跳变（实测 deltas 呈
+   * `1.7,1.7,1.7,1.7,1.7,10.2` 的周期性尖峰，仍是肉眼可见的顿挫）。
+   *
+   * 因此这里用 `windowStart`（由窗口与目标时刻反推的固定起点）而非 `now` 求相位：
+   * 参数在任务生命周期内恒定，动画一次性挂上后由合成器连续跑完，
+   * 中间任何重渲染都不会打断它。
+   *
+   * 暂停（`frozen`）时**不用**动画：直接给静态宽度，避免动画继续跑。
+   */
+  const anim = frozen || prefersReducedMotion()
+    ? undefined
+    // delay 用真实 now：保证重挂载后相位正确（duration 已固定，故不会重启动画）
+    : planBarAnimationFor(item, now, firstSeen);
+  const fillStyle: CSSProperties = anim === undefined
+    ? { width: `${totalRatio * 100}%` }
+    : {
+        // duration = 完整窗口、delay = -已过去 → 一上屏就落在绝对相位。
+        // 负 delay 是**重挂载后不归零**的关键（详见 bar-geometry 注释）。
+        animationName: 'ss-dock-bar-progress',
+        animationDuration: `${anim.durationMs}ms`,
+        animationDelay: `${anim.delayMs}ms`,
+        animationTimingFunction: 'linear',
+        animationFillMode: 'forwards',
+        animationIterationCount: 1,
+      };
   return (
     <div
       className={`ss-dock-bars${count > 4 ? ' ss-dock-bars-compact' : ''}`}
@@ -532,7 +656,7 @@ function MultiBar({
             }}
           />
         )}
-        <div className="ss-dock-bar-fill" style={{ width: `${totalRatio * 100}%` }} />
+        <div className="ss-dock-bar-fill" style={fillStyle} />
       </div>
     </div>
   );
