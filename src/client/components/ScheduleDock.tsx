@@ -627,14 +627,17 @@ function MultiBar({
   const fillStyle: CSSProperties = anim === undefined
     ? { width: `${totalRatio * 100}%` }
     : {
-        // duration = 完整窗口、delay = -已过去 → 一上屏就落在绝对相位。
-        // 负 delay 是**重挂载后不归零**的关键（详见 bar-geometry 注释）。
-        animationName: 'ss-dock-bar-progress',
-        animationDuration: `${anim.durationMs}ms`,
-        animationDelay: `${anim.delayMs}ms`,
-        animationTimingFunction: 'linear',
-        animationFillMode: 'forwards',
-        animationIterationCount: 1,
+        /**
+         * 只注入**参数**，动画名/时长/延迟的组装交给 CSS（见 styles.ts）。
+         *
+         * 原因：进行中的 fill 同时背两个动画——进度推进（ss-dock-bar-progress）
+         * 与流动纹理（ss-dock-bar-flow）。若在这里用 `animationName` 等简写属性，
+         * 会把 CSS 里那条双动画声明整条覆盖掉，流动效果就没了。
+         * 故改为传 CSS 变量，由 CSS 统一声明两个动画。
+         */
+        ['--ss-bar-duration' as string]: `${anim.durationMs}ms`,
+        // 负 delay 是**重挂载后不归零**的关键（详见 bar-geometry 注释）
+        ['--ss-bar-delay' as string]: `${anim.delayMs}ms`,
       };
   return (
     <div

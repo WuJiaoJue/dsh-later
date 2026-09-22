@@ -4,6 +4,17 @@
 
 ## 未发布
 
+- **feat** 暂停态改为「原条 + 静止」（P1 定稿）：**移除**原有的灰色斜纹填充。
+  - 进行中：原条底色 + 一层**深色**流动斜纹（`rgba(0,0,0,.28)`）。
+    必须用深色——填充是近白 `#f9fafb`（实测 `--dsw-alias-brand-primary`），
+    早期版本用白色高光叠白条，对比度≈0，肉眼完全看不出。
+  - 暂停：不叠加任何图案、不改底色，只是动画消失 → 纯原条 + 完全静止。
+    用 `:not(.ss-paused)` 挂动画，暂停行自然静止，无需额外"取消动画"声明。
+  - 实现要点：推进动画与流动动画共用同一个 `fill`，故动画的组装统一交给
+    CSS（`animation-name` 双值），JS 只注入 `--ss-bar-duration/delay` 两个变量。
+    若在 JS 里用 `animationName` 等简写属性，会把 CSS 的双动画声明整条覆盖掉。
+  - 真机实测：进行中 `animation-name: ss-dock-bar-progress, ss-dock-bar-flow`
+    （300s + 1.6s、delay -47.7s）；暂停 `background-image: none`、`animation: none`。
 - **feat** 暂停项支持「编辑文案」与「插话发送」（此前两者都被禁用，属实现缺口）。
   - **编辑**：暂停项不在日志里（pause 时已 delete），旧实现必然 `schedule_not_found`，
     客户端只好禁用按钮。现改为直接改写 sidecar 的 `PausedEntry.prompt`——不动时刻、
