@@ -19,17 +19,34 @@ export declare const PRESENCE_URGENT_WINDOW_MS: number;
 export interface PresenceScheduleLike {
     readonly scheduled_at?: string;
     readonly scheduledAt?: string;
+    /** `'paused'` 时该任务**没有排定的触发时刻**（冻结剩余秒数，等待恢复）。 */
+    readonly status?: string;
+    /** 暂停冻结的剩余秒数；仅在 `status === 'paused'` 时有意义。 */
+    readonly remaining_seconds?: number;
 }
 /** 由一组活动任务归纳的 badge 概要。 */
 export interface PresenceSummary {
-    /** 可解析触发时刻的活动任务数量。 */
+    /** 计入提醒数量的任务数（**含**暂停项）。 */
     readonly count: number;
-    /** 最早触发时刻（epoch ms）；全部不可解析时缺省。 */
+    /** 最早触发时刻（epoch ms）；没有任何"会触发"的任务时缺省。 */
     readonly nextAt?: number;
+    /** 暂停中的任务数（用于文案区分「已冻结」与「等待发送」）。 */
+    readonly pausedCount: number;
 }
 /**
- * 归纳：取最早触发时刻 + 可解析数量。`every` 类任务在投影里携带推进后的
- * `scheduledAt`（下次触发点），与一次性任务同构参与排序。
+ * 归纳：取最早触发时刻 + 任务数量。
+ *
+ * ⚠️ **暂停项不得参与 `nextAt`**（这是一个真实缺陷的根因）。暂停 = 日志 delete +
+ * sidecar 留档；wire 里的 `scheduled_at` 是 `originalScheduledAt`（**原目标时刻**），
+ * 而该时刻在暂停时通常已成过去。若照常参与取最小值，侧栏会算出 `nextAt <= now`
+ * → 显示「有 N 条定时提醒已到期，等待发送」，但这其实是一条**已冻结、不会触发**的
+ * 提醒，用户看到的是自相矛盾的状态（实测复现）。
+ *
+ * 正确语义：暂停项**计入 `count`**（它确实是待办提醒），但**不参与 `nextAt`**
+ * ——它没有排定的触发时刻，只在恢复后才重新拥有。
+ *
+ * 全部都是暂停项时 `nextAt` 为 undefined：调用方据此显示中性的「已暂停」而非
+ * 「已到期」或"下次 X 分后"。
  */
 export declare function summarizeSchedules(schedules: readonly PresenceScheduleLike[] | undefined): PresenceSummary;
 /** 由当前时刻判定 badge 状态。 */
@@ -50,6 +67,8 @@ export declare function badgeStateFor(nextAt: number | undefined, now: number): 
 export declare function hoverScheduleStatus(entry: PresenceSummary, now: number, labels: RelativeFireLabels, strings: {
     readonly hoverScheduleStatus: string;
     readonly hoverScheduleOverdue: string;
+    /** 全部任务暂停时的文案；缺省回退到 overdue 文案，保持向后兼容。 */
+    readonly hoverSchedulePaused?: string;
 }, formatHhmm: (epoch: number) => string, formatDate: (epoch: number) => string): {
     readonly label: string;
     readonly tone: PresenceBadgeState;

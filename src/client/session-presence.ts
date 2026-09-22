@@ -45,6 +45,8 @@ import {
   relativeFireLabel,
   summarizeSchedules,
   type PresenceBadgeState,
+  type PresenceScheduleLike,
+  type PresenceSummary,
   type RelativeFireLabels,
 } from '../presence.js';
 import { dictFor, format, type SchedStrings } from './strings.js';
@@ -148,12 +150,12 @@ function sessionIdOfNode(element: Element): string | undefined {
   return undefined;
 }
 
-/** 从列表快照归纳 badge 索引：sessionId → {count, nextAt}（仅保留 count>0 的行）。 */
-function buildIndex(state: PresenceListStateLike): Map<string, { count: number; nextAt?: number }> {
-  const index = new Map<string, { count: number; nextAt?: number }>();
+/** 从列表快照归纳 badge 索引：sessionId → PresenceSummary（仅保留 count>0 的行）。 */
+function buildIndex(state: PresenceListStateLike): Map<string, PresenceSummary> {
+  const index = new Map<string, PresenceSummary>();
   for (const [sessionId, summary] of Object.entries(state.byId)) {
     const schedules = (summary.projectionValues?.['userSchedules'] as
-      | { schedules?: readonly { scheduled_at?: string }[] }
+      | { schedules?: readonly PresenceScheduleLike[] }
       | undefined)?.schedules;
     const entry = summarizeSchedules(schedules);
     if (entry.count > 0) index.set(sessionId, entry);
@@ -193,7 +195,7 @@ export function mountSessionPresence(options: SessionPresenceOptions): () => voi
     return () => undefined;
   }
 
-  let index = new Map<string, { count: number; nextAt?: number }>();
+  let index = new Map<string, PresenceSummary>();
   let scanTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
 
@@ -235,12 +237,20 @@ export function mountSessionPresence(options: SessionPresenceOptions): () => voi
     const state: PresenceBadgeState = badgeStateFor(entry.nextAt, now);
     const time =
       entry.nextAt === undefined ? '' : relativeFireLabel(entry.nextAt, now, labelsFor(dict), formatHhmm, formatDate);
-    const aria =
-      state === 'overdue'
+    /**
+     * 全部任务都暂停时 `nextAt` 为 undefined：此时既不能说「下次 {time}」
+     * （没有排定时刻），也不能说「已到期」（暂停项不会自行触发）。改用专门的
+     * 「已暂停」文案，避免出现「下次  · 1 条任务」这种残缺句子。
+     */
+    const allPaused = entry.nextAt === undefined && entry.pausedCount > 0;
+    const aria = allPaused
+      ? format(dict.presencePausedAria, { n: entry.count })
+      : state === 'overdue'
         ? format(dict.presenceOverdueAria, { n: entry.count })
         : format(dict.presenceBadgeAria, { n: entry.count, time });
-    const tooltip =
-      state === 'overdue'
+    const tooltip = allPaused
+      ? format(dict.presencePausedTooltip, { n: entry.count })
+      : state === 'overdue'
         ? format(dict.presenceOverdueTooltip, { n: entry.count })
         : format(dict.presenceTooltip, { n: entry.count, time });
     if (existing !== null) {
