@@ -620,10 +620,30 @@ function MultiBar({
    *
    * 暂停（`frozen`）时**不用**动画：直接给静态宽度，避免动画继续跑。
    */
+  /**
+   * 相位只在**挂载时**定一次，之后不再变（`paused`/`ratio` 变化时按需重定）。
+   *
+   * ⚠️ 为什么不能每次渲染都用 `now` 重算（这是「速度不均衡」的根因）：
+   * CSS 动画挂上后会**自行推进**。若每秒 tick 重渲染时把
+   * `delay = -(now - start)` 重算一遍，浏览器会把播放头又往前挪 1 秒——
+   * 而这一秒动画本来已经走过了，等于**双倍计数**，表现为每秒一次的跳变。
+   * 实测：`--ss-bar-delay` 每约 1s 精确变化 -1000ms，宽度增量出现
+   * `0.0153 → 0.3485`（约 23 倍）的周期尖刺，与 tick 周期一致。
+   *
+   * 因此用 ref 把「挂载时刻」冻结，delay 只由它算：
+   *  - 重渲染（含每秒 tick）→ delay 不变 → 动画不被打断、也不会多跳；
+   *  - 重新挂载（切会话回来）→ ref 重取当前时刻 → 相位按绝对时间重新对齐
+   *    （这正是「切回来不归零」所需的行为）。
+   */
+  const phaseAtRef = useRef<number | null>(null);
+  if (frozen || prefersReducedMotion()) {
+    phaseAtRef.current = null; // 暂停/降级：清掉，恢复时重新取
+  } else if (phaseAtRef.current === null) {
+    phaseAtRef.current = now;
+  }
   const anim = frozen || prefersReducedMotion()
     ? undefined
-    // delay 用真实 now：保证重挂载后相位正确（duration 已固定，故不会重启动画）
-    : planBarAnimationFor(item, now, firstSeen);
+    : planBarAnimationFor(item, phaseAtRef.current ?? now, firstSeen);
   const fillStyle: CSSProperties = anim === undefined
     ? { width: `${totalRatio * 100}%` }
     : {
@@ -635,7 +655,8 @@ function MultiBar({
          * 分工，将来若再加纹理/状态动效不必回头改 JS。
          */
         ['--ss-bar-duration' as string]: `${anim.durationMs}ms`,
-        // 负 delay 是**重挂载后不归零**的关键（详见 bar-geometry 注释）
+        // 负 delay 把播放头定位到挂载时刻的绝对相位；此后恒定不变
+        // （重算会让动画多跳——见上方 phaseAtRef 注释）。
         ['--ss-bar-delay' as string]: `${anim.delayMs}ms`,
       };
   return (

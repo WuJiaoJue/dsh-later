@@ -241,3 +241,34 @@ test('推进连续性：逐帧增量恒定（视觉匀速、无锯齿）', () =>
   assert.ok(Math.max(...deltas) - Math.min(...deltas) < 1e-12, '线性推进的逐帧增量必须恒定');
   assert.ok(Math.max(...deltas) < 0.01, '每 100ms 增量远小于旧实现的每秒跳变量');
 });
+
+test('回归：相位参数在挂载后恒定（重算 delay 会让动画每秒多跳）', () => {
+  /**
+   * 根因：CSS 动画挂上后会自行推进。若每秒 tick 重渲染时把
+   * delay = -(now - start) 重算一遍，浏览器会把播放头又前移 1 秒，
+   * 而这一秒动画本已走过 → 双倍计数，表现为每秒一次跳变。
+   *
+   * 实测证据：--ss-bar-delay 每约 1s 精确变化 -1000ms；
+   * 宽度增量出现 0.0153 → 0.3485（约 23 倍）的周期尖刺，与 tick 周期一致。
+   *
+   * 因此调用方必须把「挂载时刻」冻结（见 ScheduleDock 的 phaseAtRef），
+   * 而不是每次渲染传新的 now。本测试锁定该契约的数学部分：
+   * 同一挂载时刻必须给出同一 delay。
+   */
+  const totalMs = 600_000;
+  const mountAt = 1_700_000_000_000;
+  const elapsedAtMount = 60_000; // 挂载时已过 60s
+
+  const first = planBarAnimation(totalMs, elapsedAtMount);
+  // 模拟 5 次 tick 重渲染：只要仍传「挂载时刻」，结果必须完全一致
+  for (let tick = 1; tick <= 5; tick++) {
+    const again = planBarAnimation(totalMs, elapsedAtMount);
+    assert.deepEqual(again, first, `第 ${tick} 次重渲染不得改变动画参数`);
+  }
+  assert.equal(first?.delayMs, -60_000);
+
+  // 反例：若每 tick 用新的 now 重算，delay 会持续变负（= 多跳）
+  const drifted = planBarAnimation(totalMs, elapsedAtMount + 5_000);
+  assert.notDeepEqual(drifted, first, '用递增的 now 重算会得到不同参数（这正是 bug）');
+  assert.equal(drifted?.delayMs, -65_000, '多算了 5 秒 → 动画会多跳 5 秒的量');
+});
