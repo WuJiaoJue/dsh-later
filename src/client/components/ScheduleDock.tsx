@@ -628,12 +628,11 @@ function MultiBar({
     ? { width: `${totalRatio * 100}%` }
     : {
         /**
-         * 只注入**参数**，动画名/时长/延迟的组装交给 CSS（见 styles.ts）。
+         * 只注入**参数**（CSS 变量），动画的组装交给 CSS（见 styles.ts）。
          *
-         * 原因：进行中的 fill 同时背两个动画——进度推进（ss-dock-bar-progress）
-         * 与流动纹理（ss-dock-bar-flow）。若在这里用 `animationName` 等简写属性，
-         * 会把 CSS 里那条双动画声明整条覆盖掉，流动效果就没了。
-         * 故改为传 CSS 变量，由 CSS 统一声明两个动画。
+         * 这样做的原因：动画声明留在 CSS 里，JS 不碰 `animationName` 等简写属性
+         * ——否则会整条覆盖 CSS 的声明。当前只有进度推进一个动画，但保持这个
+         * 分工，将来若再加纹理/状态动效不必回头改 JS。
          */
         ['--ss-bar-duration' as string]: `${anim.durationMs}ms`,
         // 负 delay 是**重挂载后不归零**的关键（详见 bar-geometry 注释）
