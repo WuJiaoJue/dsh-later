@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-later · 暂停表达：换一条通道</title>
+<style>
+  /*
+   * ⚠️ 颜色取自真实 dock 的 getComputedStyle 实测（勿凭印象改）：
+   *   进度条填充 = --dsw-alias-brand-primary = #f9fafb（近白，不是蓝）
+   *   次要文字   = --dsw-alias-label-tertiary = #adb2b8
+   *   轨道       = --dsw-alias-line-secondary = 未设置（实际透明）
+   *   面板深色（body ≈ #151517）
+   *
+   * 本页思路：前面两轮都在改「进度条的纹理」（斜纹/冰封/阻塞头）。
+   * 这一轮换**表达通道**——不再只动 fill 的图案：
+   *   C 时间轴   : 用「时间刻度」而非「管道」隐喻
+   *   D 结构     : 给冻结段落加物理边界的形状
+   *   E 状态     : 改行内其它元素（图标/文字/行底），条几乎不动
+   *   F 动效     : 用静态可画的"被定住"暗示（含可选动效）
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #1b1c1f;
+    --bg-soft: #151517;
+    --text: #f9fafb;
+    --text-dim: #adb2b8;
+    --text-3rd: #7c828a;
+    --brand: #f9fafb;
+    --line: rgba(255,255,255,.10);
+    --line-strong: rgba(255,255,255,.18);
+    --track: rgba(255,255,255,.10);
+    --tip: #202124;
+    --cold: #9fc0e8;
+    --cold-2: #6f9dd4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 20px 64px; background: var(--bg-soft); color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif; }
+  .page { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 14px; margin: 30px 0 10px; color: var(--text-dim); font-weight: 600; }
+  h2 .hint2 { font-weight: 400; font-size: 12px; color: var(--text-3rd); }
+  .lede { margin: 0 0 4px; color: var(--text-dim); font-size: 13px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+    margin: 18px 0 6px; padding: 12px 14px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .controls input[type=range] { width: 170px; }
+  .controls .val { color: var(--text); font-variant-numeric: tabular-nums; min-width: 50px; }
+  .controls .spacer { flex: 1; }
+
+  /* ===== dock 行几何（与生产一致） ===== */
+  .row { display: flex; align-items: center; gap: 10px;
+    min-height: 36px; padding: 4px 8px 4px 10px; border-radius: 8px; background: var(--tip); }
+  .preview { flex: auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .time, .count { flex: none; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .prompt { flex: 1; min-width: 0; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-actions { display: flex; gap: 10px; flex: none; color: var(--text-dim); font-size: 12px; }
+  .bar { position: relative; height: 6px; border-radius: 999px; overflow: hidden; background: var(--track); }
+  .bar.compact { height: 4px; }
+  .fill { position: relative; z-index: 1; height: 100%; border-radius: 999px;
+    background: var(--brand); transition: none; min-width: 10px; }
+
+  /* 图标（用字符近似生产 SVG，仅用于观感对照） */
+  .ic { font-size: 12px; line-height: 1; }
+
+  /* ============================================================
+     C 方向 · 时间轴：把「管道」换成「刻度/标尺」
+     隐喻从"还剩多少流量"变成"时间轴被停在哪一格"。
+     ============================================================ */
+
+  /* C1 · 刻度尺：轨道上打等距刻度，冻结处停止 */
+  .c-ruler .bar {
+    background:
+      repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px 9px),
+      var(--track);
+  }
+  .c-ruler.ss-paused .fill { background: var(--brand); }
+
+  /* C2 · 磁带卷：左实右虚，像磁带盒两卷 */
+  .c-tape .bar { background: var(--track); }
+  .c-tape.ss-paused .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(0,0,0,.45) 0 2px, transparent 2px 6px),
+      var(--brand);
+  }
+
+  /* C3 · 游标停在刻度上：末端一个小三角指示器 */
+  .c-cursor .fill::after {
+    content: ''; position: absolute; right: -2px; top: 50%; width: 0; height: 0;
+    transform: translateY(-50%);
+    border-left: 4px solid var(--brand);
+    border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+    filter: drop-shadow(0 0 0 var(--bg));
+  }
+
+  /* C4 · 温度计：末端一个"冻结球" */
+  .c-thermo .fill::after {
+    content: ''; position: absolute; right: -3px; top: 50%; width: 7px; height: 7px;
+    transform: translateY(-50%); border-radius: 50%;
+    background: var(--cold); box-shadow: 0 0 0 2px var(--bg);
+  }
+
+  /* ============================================================
+     D 方向 · 结构：给"冻结段"物理边界（括号/胶囊/断口）
+     ============================================================ */
+
+  /* D1 · 括号：冻结段被一对括号"夹住" */
+  .d-bracket .fill { box-shadow: inset 3px 0 0 var(--bg), inset -3px 0 0 var(--bg); }
+
+  /* D2 · 胶囊断裂：末端留一道缺口，后面接一小段"余料" */
+  .d-remnant .bar::after {
+    content: ''; position: absolute; top: 0; bottom: 0; right: 0; width: 14%;
+    background: repeating-linear-gradient(115deg, var(--line-strong) 0 2px, transparent 2px 5px);
+    border-radius: 999px; opacity: .55;
+  }
+
+  /* D3 · 双段：已走过（实）+ 冻结（虚线框）*/
+  .d-outline .fill { background: var(--brand); }
+  .d-outline .bar::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 62%; right: 0;
+    border: 1px dashed var(--line-strong); border-radius: 999px;
+  }
+
+  /* D4 · 断口：冻结处一道细缝 + 错位感（两段错开 1px）*/
+  .d-crack .fill::after {
+    content: ''; position: absolute; right: 0; top: -1px; bottom: -1px; width: 2px;
+    background: var(--bg); transform: skewX(-18deg);
+  }
+
+  /* ============================================================
+     E 方向 · 状态：条几乎不动，改行内其它元素
+     （优点：零风险，不影响进度条几何；缺点：离"条上表达"最远）
+     ============================================================ */
+
+  /* E1 · 左侧状态轨：行左侧一条竖色带 */
+  .e-rail { position: relative; }
+  .e-rail::before {
+    content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 2px; background: var(--cold);
+  }
+
+  /* E2 · 冻结总长：条不变，但整条加冷色描边 */
+  .e-ring .bar { box-shadow: inset 0 0 0 1px var(--cold); }
+
+  /* E3 · 文字语义：把 countdown 换成"已冻结"并加冷色 */
+  .e-text .count { color: var(--cold); }
+  .e-text .prompt { color: var(--text-3rd); }
+
+  /* E4 · 行底纹：整行淡冷色底 */
+  .e-bg .row { background: color-mix(in srgb, var(--cold) 10%, var(--tip)); }
+
+  /* ============================================================
+     F 方向 · 动效：静态可画的"被定住"暗示
+     （动效对暂停语义帮助有限，且需尊重 reduced-motion；这里只做很轻的）
+     ============================================================ */
+
+  /* F1 · 呼吸边：冻结段边缘极慢呼吸（2.4s），暗示"仍在等待" */
+  .f-breathe .fill {
+    background: var(--brand);
+    animation: f-breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes f-breathe {
+    0%, 100% { box-shadow: inset 0 0 0 0 rgba(159,192,232,0); }
+    50% { box-shadow: inset 0 0 0 6px rgba(159,192,232,.35); }
+  }
+
+  /* F2 · 冷光扫过：很慢的高光扫过（4s），像冰面反光移动 */
+  .f-sweep .fill {
+    background:
+      linear-gradient(100deg, transparent 40%, rgba(159,192,232,.55) 50%, transparent 60%) 0 0 / 300% 100%,
+      var(--brand);
+    animation: f-sweep 4s linear infinite;
+  }
+  @keyframes f-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+  /* F3 · 脉搏点：末端一个缓慢脉冲的点 */
+  .f-pulse .fill::after {
+    content: ''; position: absolute; right: -2px; top: 50%; width: 6px; height: 6px;
+    transform: translateY(-50%); border-radius: 50%; background: var(--cold);
+    animation: f-pulse 1.8s ease-out infinite;
+  }
+  @keyframes f-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(159,192,232,.6); }
+    100% { box-shadow: 0 0 0 7px rgba(159,192,232,0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .f-breathe .fill, .f-sweep .fill, .f-pulse .fill::after { animation: none; }
+  }
+
+  /* ===== 卡片 ===== */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; }
+  .card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; flex-wrap: wrap; }
+  .card-title { font-size: 13px; font-weight: 600; }
+  .card-tag { font-size: 10px; padding: 1px 7px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--text-dim); }
+  .card-tag.risk { color: #fbbf24; border-color: rgba(251,191,36,.35); }
+  .card-desc { margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); min-height: 34px; }
+  .card-css { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: var(--bg);
+    border: 1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .compare { grid-template-columns: 1fr; } }
+  .compare h3 { font-size: 12px; margin: 0 0 8px; color: var(--text-dim); font-weight: 600; }
+  .zoom .bar { height: 18px; }
+  .zoom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+  @media (max-width: 680px) { .zoom-grid { grid-template-columns: 1fr; } }
+  .zlabel { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: block; }
+  .foot { margin-top: 28px; font-size: 12px; color: var(--text-dim); }
+  .foot ol { margin: 8px 0 0; padding-left: 20px; }
+  .foot li { margin: 5px 0; }
+  .note { margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>暂停表达 · 换一条通道</h1>
+  <p class="lede">
+    前两轮都在改<strong>进度条的纹理</strong>（斜纹 / 冰封 / 尾部阻塞）。这轮换思路：
+    <strong>C 时间轴</strong>（换隐喻）、<strong>D 结构</strong>（换形状）、<strong>E 状态</strong>（不动条，改行）、
+    <strong>F 动效</strong>（静态 + 轻动效）。颜色仍按真实 dock 实测值。
+  </p>
+
+  <div class="controls">
+    <label>进度 <input id="pct" type="range" min="4" max="92" value="62" /><span class="val" id="pctLabel">62%</span></label>
+    <span class="spacer"></span>
+    <label style="gap:6px"><input type="checkbox" id="compact" /> 紧凑态 4px</label>
+    <label style="gap:6px"><input type="checkbox" id="zoomChk" /> 放大 ×3</label>
+  </div>
+
+  <h2>并排速览（同一进度）</h2>
+  <div class="card">
+    <div class="compare">
+      <div><h3>进行中（原样）</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">剩 43:12</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions"><span class="ic">✎</span><span class="ic">⏸</span><span class="ic">🗑</span><span class="ic">↑</span></div></div>
+      </div>
+      <div class="ss-paused c-cursor"><h3>C3 · 游标停在刻度上</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions"><span class="ic">✎</span><span class="ic">▶</span><span class="ic">🗑</span><span class="ic">↑</span></div></div>
+      </div>
+      <div class="ss-paused e-rail e-text"><h3>E1+E3 · 左侧状态轨 + 冷色文字</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已冻结</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions"><span class="ic">✎</span><span class="ic">▶</span><span class="ic">🗑</span><span class="ic">↑</span></div></div>
+      </div>
+      <div class="ss-paused d-remnant"><h3>D2 · 胶囊断裂（余料）</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions"><span class="ic">✎</span><span class="ic">▶</span><span class="ic">🗑</span><span class="ic">↑</span></div></div>
+      </div>
+    </div>
+    <div class="note">注意：E 方向（左侧状态轨 / 冷色文字）<b>完全不改进度条本身</b>——几何零风险，但表达最含蓄。</div>
+  </div>
+
+  <h2>放大细节 <span class="hint2">（×3；仍以真实 6px 为准）</span></h2>
+  <div class="card">
+    <div class="zoom">
+      <div class="zoom-grid" id="zoomGrid"></div>
+    </div>
+  </div>
+
+  <h2>C · 时间轴隐喻 <span class="hint2">换掉「管道」这个隐喻</span></h2>
+  <div class="grid" id="gridC"></div>
+
+  <h2>D · 结构 / 形状 <span class="hint2">改动几何或增加分段</span></h2>
+  <div class="grid" id="gridD"></div>
+
+  <h2>E · 状态（条不动） <span class="hint2">零几何风险，改行内其它元素</span></h2>
+  <div class="grid" id="gridE"></div>
+
+  <h2>F · 动效 <span class="hint2">很轻；已尊重 prefers-reduced-motion</span></h2>
+  <div class="grid" id="gridF"></div>
+
+  <p class="foot">
+    <strong>我的判断（按"实际可用性"排序）</strong>
+    <ol>
+      <li><strong>E 方向最稳</strong>：条不动 → 不碰几何、不影响最小宽度/紧凑态，也没有暂停前后长度跳变的风险。只是表达偏含蓄，需要配合文字。</li>
+      <li><strong>C3 游标</strong>：隐喻清楚（"停在这一格"），实现只是一个三角，成本低。但会超出轨道 2px，需确认与 <code>overflow:hidden</code> 的关系。</li>
+      <li><strong>D2 胶囊断裂</strong>：视觉信息最丰富（已走过 + 冻结 + 余量），但要动 <code>.bar::after</code>，且"余料"的含义可能被误读为"还有进度"。</li>
+      <li><strong>F 动效</strong>：老实说，暂停用动效是矛盾的——动的东西不"停"。F1/F3 的呼吸/脉冲更像"等待中"，可能反而不符合暂停语义。默认建议不做，或只保留 F2 的极慢扫光。</li>
+      <li>风险提示：D 方向的分段/余料容易和"已到期（overdue）"的状态混淆，需与 <code>ss-due</code> 的红色体系错开。</li>
+    </ol>
+    <div class="note">
+      实现成本：<b>E 方向</b>与 <b>C1/C2</b> 纯 CSS，零 JSX 改动；<b>C3/C4/D4</b> 用 <code>::after</code> 即可；
+      <b>D2/D3</b> 需要 <code>.bar::after</code>（也不改 JSX）；只有想精确控制冻结段边界时才需要加空 <code>span</code>。
+    </div>
+  </p>
+</div>
+
+<script>
+const VARIANTS = {
+  gridC: [
+    { cls:'c-ruler', title:'C1 · 刻度尺', tag:'零 JSX',
+      desc:'轨道打等距刻度，进度条停止在某一格。把"还剩多少"换成"停在时间轴哪一格"，隐喻最贴近"定时"。',
+      css:'.c-ruler .bar {\n  background:\n    repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px 9px),\n    var(--track);\n}' },
+    { cls:'c-tape', title:'C2 · 磁带停转', tag:'零 JSX',
+      desc:'冻结段用较密的深色斜纹，像磁带停住。与已有斜纹方向同源，改动最小。',
+      css:'.c-tape.ss-paused .fill {\n  background:\n    repeating-linear-gradient(115deg, rgba(0,0,0,.45) 0 2px, transparent 2px 6px),\n    var(--brand);\n}' },
+    { cls:'c-cursor', title:'C3 · 游标停在刻度上', tag:'推荐',
+      desc:'末端一枚三角游标，指示"就停在这"。隐喻清楚、成本低；注意会超出轨道 2px，需处理 overflow 裁切。',
+      css:'.c-cursor .fill::after {\n  content:""; position:absolute; right:-2px; top:50%; width:0; height:0;\n  transform: translateY(-50%);\n  border-left: 4px solid var(--dsw-alias-brand-primary);\n  border-top: 4px solid transparent; border-bottom: 4px solid transparent;\n}' },
+    { cls:'c-thermo', title:'C4 · 温度计冻结球', tag:'冷色',
+      desc:'末端一枚冷色圆球，像温度计的水银球被冻住。引入冷色，与"冰封"路线一脉相承。',
+      css:'.c-thermo .fill::after {\n  content:""; position:absolute; right:-3px; top:50%; width:7px; height:7px;\n  transform: translateY(-50%); border-radius:50%; background: var(--cold);\n  box-shadow: 0 0 0 2px var(--bg);\n}' },
+  ],
+  gridD: [
+    { cls:'d-bracket', title:'D1 · 括号夹住', tag:'零 JSX',
+      desc:'冻结段两端各留 3px 深色，像被一对括号夹住。形状语言，不引入新颜色。',
+      css:'.d-bracket .fill {\n  box-shadow: inset 3px 0 0 var(--bg), inset -3px 0 0 var(--bg);\n}' },
+    { cls:'d-remnant', title:'D2 · 胶囊断裂（余料）', tag:'需 .bar::after',
+      desc:'末端补一小段虚化"余料"，表达"管道还在、但推进停了"。信息最丰富，但可能被误读成"还有进度"。',
+      css:'.d-remnant .bar::after {\n  content:""; position:absolute; top:0; bottom:0; right:0; width:14%;\n  background: repeating-linear-gradient(115deg, var(--line-strong) 0 2px, transparent 2px 5px);\n  border-radius:999px; opacity:.55;\n}' },
+    { cls:'d-outline', title:'D3 · 双段（实 + 虚线框）', tag:'需 .bar::after',
+      desc:'已走过为实心，未走过为虚线框。语义最"工程"，但虚线在 4px 高度基本看不清。',
+      css:'.d-outline .bar::after {\n  content:""; position:absolute; top:0; bottom:0; left:62%; right:0;\n  border:1px dashed var(--line-strong); border-radius:999px;\n}' },
+    { cls:'d-crack', title:'D4 · 断口斜缝', tag:'零 JSX',
+      desc:'冻结处一道 2px 斜缝，像被剪断。最省、最含蓄；斜率让"断"更有物理感。',
+      css:'.d-crack .fill::after {\n  content:""; position:absolute; right:0; top:-1px; bottom:-1px; width:2px;\n  background: var(--bg); transform: skewX(-18deg);\n}' },
+  ],
+  gridE: [
+    { cls:'e-rail', title:'E1 · 左侧状态轨', tag:'推荐·零风险',
+      desc:'行左侧一条 2px 冷色竖带。完全不动进度条 → 不影响几何、最小宽度、紧凑态，也没有长度跳变风险。',
+      css:'.e-rail { position: relative; }\n.e-rail::before {\n  content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px;\n  border-radius:2px; background: var(--cold);\n}' },
+    { cls:'e-ring', title:'E2 · 整条冷色描边', tag:'零风险',
+      desc:'条长完全不变，只给轨道加 1px 冷色内描边。改动极小，暗色下清晰可辨。',
+      css:'.e-ring .bar { box-shadow: inset 0 0 0 1px var(--cold); }' },
+    { cls:'e-text', title:'E3 · 文字语义', tag:'零风险',
+      desc:'倒计时文字转冷色、文案改"已冻结"，任务名压暗。最省事，但依赖文字，一眼扫过时最弱。',
+      css:'.e-text .count { color: var(--cold); }\n.e-text .prompt { color: var(--text-3rd); }' },
+    { cls:'e-bg', title:'E4 · 整行淡冷底', tag:'零风险',
+      desc:'整行背景混入 10% 冷色。面积最大所以最醒目，但会改变整行底色，多条并存时可能显得脏。',
+      css:'.e-bg .row { background: color-mix(in srgb, var(--cold) 10%, var(--tip)); }' },
+  ],
+  gridF: [
+    { cls:'f-breathe', title:'F1 · 呼吸边', tag:'risk', risk:true,
+      desc:'冻结段边缘极慢呼吸（2.4s）。问题：动的东西不像"停住"，更像"等待中"，与暂停语义相悖。',
+      css:'.f-breathe .fill { animation: f-breathe 2.4s ease-in-out infinite; }\n@keyframes f-breathe {\n  50% { box-shadow: inset 0 0 0 6px rgba(159,192,232,.35); }\n}' },
+    { cls:'f-sweep', title:'F2 · 冷光缓扫', tag:'risk', risk:true,
+      desc:'4s 一次的高光扫过，像冰面反光。三个动效里最不"闹"的一个，但仍属装饰性。',
+      css:'.f-sweep .fill {\n  background:\n    linear-gradient(100deg, transparent 40%, rgba(159,192,232,.55) 50%, transparent 60%) 0 0/300% 100%,\n    var(--brand);\n  animation: f-sweep 4s linear infinite;\n}' },
+    { cls:'f-pulse', title:'F3 · 末端脉冲点', tag:'risk', risk:true,
+      desc:'末端一枚缓慢扩散的点。视觉引导强，但"脉冲"通常表示"活着/在跑"，容易被误读为仍在推进。',
+      css:'.f-pulse .fill::after {\n  content:""; position:absolute; right:-2px; top:50%; width:6px; height:6px;\n  transform: translateY(-50%); border-radius:50%; background: var(--cold);\n  animation: f-pulse 1.8s ease-out infinite;\n}' },
+  ],
+};
+
+const pct = document.getElementById('pct');
+const pctLabel = document.getElementById('pctLabel');
+const compactChk = document.getElementById('compact');
+const zoomChk = document.getElementById('zoomChk');
+
+function rowHtml() {
+  return `<div class="row"><div class="preview">
+      <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+      <div class="bar${compactChk.checked ? ' compact' : ''}"><div class="fill"></div></div>
+    </div><div class="row-actions"><span class="ic">✎</span><span class="ic">▶</span><span class="ic">🗑</span><span class="ic">↑</span></div></div>`;
+}
+
+function cardHtml(v) {
+  return `<article class="card ss-paused ${v.cls}">
+    <div class="card-head"><span class="card-title">${v.title}</span><span class="card-tag${v.risk ? ' risk' : ''}">${v.tag}</span></div>
+    <p class="card-desc">${v.desc}</p>
+    ${rowHtml()}
+    <div class="card-css">${v.css}</div>
+  </article>`;
+}
+
+function render() {
+  const w = Math.max(6, Number(pct.value));
+  pctLabel.textContent = pct.value + '%';
+  for (const id of ['gridC','gridD','gridE','gridF']) {
+    document.getElementById(id).innerHTML = VARIANTS[id].map(cardHtml).join('');
+  }
+  // zoom strip
+  const zoomSet = [
+    ['进行中', ''], ['C3 游标', 'c-cursor'], ['D4 断口', 'd-crack'],
+    ['E2 描边', 'e-ring'], ['C2 磁带', 'c-tape'], ['D2 余料', 'd-remnant'],
+  ];
+  document.getElementById('zoomGrid').innerHTML = zoomSet.map(([label, cls]) => `
+    <div class="${cls} ss-paused"><span class="zlabel">${label}</span>
+      <div class="bar"><div class="fill"></div></div></div>`).join('');
+
+  document.querySelectorAll('.card .fill, #zoomGrid .fill').forEach((f) => { f.style.width = w + '%'; });
+  document.querySelectorAll('.zoom').forEach((z) => z.classList.toggle('off', !zoomChk.checked));
+  document.querySelectorAll('.zoom .bar').forEach((b) => { b.style.height = zoomChk.checked ? '18px' : '6px'; });
+}
+
+pct.addEventListener('input', render);
+compactChk.addEventListener('change', render);
+zoomChk.addEventListener('change', render);
+render();
+</script>
+</body>
+</html>

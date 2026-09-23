@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-later · 暂停斜纹：保留原条 + 叠加透明斜纹</title>
+<style>
+  /*
+   * ⚠️ 这些值是从**真实运行中的 dock** 用 getComputedStyle 量出来的，不是猜的：
+   *   --dsw-alias-brand-primary  = #f9fafb   （近白，不是蓝色！本插件沿用它做进度条填充）
+   *   --dsw-alias-label-tertiary = #adb2b8   （次要文字/时间）
+   *   --dsw-alias-line-secondary = 未设置     （所以轨道实际透明，见 --track）
+   * 宿主 web 主题目前是深色，面板底色 #151517 量级。
+   * 早期版本的 demo 误把 brand-primary 当成蓝色 #4d6bfe —— 那是错的，已按实测修正。
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #1b1c1f;
+    --bg-soft: #151517;
+    --text: #f9fafb;
+    --text-dim: #adb2b8;
+    --text-3rd: #7c828a;
+    --brand: #f9fafb;      /* = --dsw-alias-brand-primary（实测） */
+    --line: rgba(255, 255, 255, 0.10);
+    --line-strong: rgba(255, 255, 255, 0.18);
+    --track: rgba(255, 255, 255, 0.10); /* line-secondary 未设置 → 轨道接近透明 */
+    --tip: #202124;
+    --tip-soft: #232427;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 64px;
+    background: var(--bg-soft); color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  }
+  .page { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 14px; margin: 26px 0 10px; color: var(--text-dim); font-weight: 600; }
+  .lede { margin: 0 0 4px; color: var(--text-dim); font-size: 13px; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+  }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+    margin: 18px 0 6px; padding: 12px 14px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .controls input[type=range] { width: 190px; }
+  .controls .val { color: var(--text); font-variant-numeric: tabular-nums; min-width: 52px; }
+  .controls .spacer { flex: 1; }
+  .theme-btn {
+    font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: none; color: var(--text-dim); cursor: pointer;
+  }
+
+  /* ===== dock 行几何：与 ScheduleDock 保持一致 ===== */
+  .row {
+    display: flex; align-items: center; gap: 10px;
+    min-height: 36px; padding: 4px 8px 4px 10px;
+    border-radius: 8px; background: var(--tip);
+  }
+  .preview { flex: auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .time, .count { flex: none; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .prompt { flex: 1; min-width: 0; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-actions { display: flex; gap: 10px; flex: none; color: var(--text-dim); font-size: 12px; }
+
+  .bar {
+    position: relative; height: 6px; border-radius: 999px; overflow: hidden;
+    background: var(--line-strong);
+    --ss-bar-divider: color-mix(in srgb, var(--text) 35%, transparent);
+  }
+  .bar.compact { height: 4px; }
+
+  /* 原进度条（进行中）—— 未改动的基准 */
+  .fill {
+    position: relative; z-index: 1; height: 100%; border-radius: 999px;
+    background: var(--brand);
+    transition: none;
+    min-width: 10px;
+  }
+
+  /* 分隔线（每 1h 一段刻度），与生产同构 */
+  .divider {
+    position: absolute; inset: 0; pointer-events: none; z-index: 0;
+    background-repeat: no-repeat;
+  }
+
+  /* ============ 候选：保留原条 + 叠加透明斜纹 ============
+     关键认识（实测）：进度条填充是**近白** #f9fafb，轨道几乎透明，背景是深色面板。
+     所以在白条上叠「白斜纹」等于没叠。可行的方向只有两类：
+       A. 在白条上叠**深色/透明**斜纹（把白条"切"出条纹）
+       B. 保留白条不动，另加一层浅色底（让白条与底之间出现纹理）
+     下面按这两类给出候选。 */
+
+  /* 1 · 白条 + 深色缺口斜纹（用面板底色"切"白条）——最接近"原条加斜纹" */
+  .v-notch .fill {
+    background:
+      repeating-linear-gradient(115deg,
+        transparent 0 5px,
+        var(--bg) 5px 10px),
+      var(--brand);
+  }
+
+  /* 2 · 白条 + 半透明黑斜纹（比方案 1 柔和，仍能看清白条本色） */
+  .v-black .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(0,0,0,.55) 0 5px, transparent 5px 10px),
+      var(--brand);
+  }
+
+  /* 3 · 白条 + 半透明黑斜纹（窄纹，更细密） */
+  .v-fine .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(0,0,0,.45) 0 3px, transparent 3px 7px),
+      var(--brand);
+  }
+
+  /* 4 · 反方向 65° 深色缺口 */
+  .v-reverse .fill {
+    background:
+      repeating-linear-gradient(65deg, transparent 0 5px, var(--bg) 5px 10px),
+      var(--brand);
+  }
+
+  /* 5 · 白条降不透明度 + 深色斜纹（整体变暗，"停住"感最强） */
+  .v-dim .fill {
+    background:
+      repeating-linear-gradient(115deg, transparent 0 5px, var(--bg) 5px 10px),
+      var(--brand);
+    opacity: .72;
+  }
+
+  /* 6 · 白条 + 深色斜纹，且给轨道加可见底（补上 line-secondary 未设置的空缺） */
+  .v-track .fill {
+    background:
+      repeating-linear-gradient(115deg, transparent 0 5px, var(--bg) 5px 10px),
+      var(--brand);
+  }
+  .v-track .bar { background: rgba(255,255,255,.10); }
+
+  /* 7 · 双色斜纹：深色缺口 + 品牌色细线（层次最多） */
+  .v-dual .fill {
+    background:
+      repeating-linear-gradient(115deg,
+        transparent 0 4px,
+        var(--bg) 4px 8px),
+      repeating-linear-gradient(115deg,
+        rgba(120,150,255,.55) 0 1px,
+        transparent 1px 8px),
+      var(--brand);
+  }
+
+  /* 8 · 当前生产实现（对照） */
+  .v-current .fill {
+    background:
+      repeating-linear-gradient(115deg, var(--text-dim) 0 5px, transparent 5px 10px),
+      color-mix(in srgb, var(--text-dim) 55%, var(--track));
+    opacity: 1;
+  }
+
+  /* ===== 展示卡片 ===== */
+  .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .card {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px 14px;
+  }
+  .card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .card-title { font-size: 13px; font-weight: 600; }
+  .card-tag {
+    font-size: 10px; padding: 1px 7px; border-radius: 999px;
+    background: var(--bg-soft); border: 1px solid var(--line); color: var(--text-dim);
+  }
+  .card-tag.rec { background: color-mix(in srgb, var(--brand) 16%, transparent); border-color: color-mix(in srgb, var(--brand) 40%, transparent); color: var(--brand); }
+  .card-tag.cur { background: var(--tip); color: var(--text-dim); }
+  .card-desc { margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); }
+  .card-css {
+    margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+    background: var(--bg-soft); border: 1px solid var(--line);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
+  }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+  .stack { display: grid; gap: 8px; }
+  /* 对照用：显式声明「进行中」的纯白条，不受任何候选规则影响 */
+  .fill-active { background: var(--brand) !important; }
+  .compare h3 { font-size: 12px; margin: 0 0 8px; color: var(--text-dim); font-weight: 600; }
+  .foot { margin-top: 26px; font-size: 12px; color: var(--text-dim); }
+  .foot ol { margin: 8px 0 0; padding-left: 20px; }
+  .foot li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>暂停进度条 · 保留原条 + 叠加透明斜纹</h1>
+  <p class="lede">
+    思路：暂停时<strong>不换底色</strong>，仍是进行中的那条进度条，只在上面叠斜纹。
+    几何与 dock 完全一致（6px 轨道、只改 fill）。<br />
+    <strong>颜色已按实测修正</strong>：进度条填充 <code>--dsw-alias-brand-primary</code> 在本主题下是
+    <code>#f9fafb</code>（近<strong>白</strong>，不是蓝），轨道 <code>--dsw-alias-line-secondary</code> 未设置（近乎透明），
+    面板是深色。所以「叠白斜纹」在白条上等于没叠 —— 候选改为在白条上叠<strong>深色缺口</strong>。
+  </p>
+
+  <div class="controls">
+    <label>进度
+      <input id="pct" type="range" min="4" max="92" value="28" />
+      <span class="val" id="pctLabel">28%</span>
+    </label>
+    <label>窗口
+      <input id="win" type="range" min="5" max="180" value="60" />
+      <span class="val" id="winLabel">1 小时</span>
+    </label>
+    <span class="spacer"></span>
+    <button class="theme-btn" id="themeBtn" type="button">切换浅/深色</button>
+  </div>
+
+  <h2>先看关键对照：进行中 vs 暂停（同一个 28%）</h2>
+  <div class="card">
+    <div class="compare">
+      <div class="v-active">
+        <h3>进行中（原样，未改）</h3>
+        <div class="row">
+          <div class="preview">
+            <div class="line"><span class="time">15:30</span><span class="count">剩 43:12</span><span class="prompt">看一下构建结果</span></div>
+            <div class="bar"><div class="divider"></div><div class="fill" style="width:28%"></div></div>
+          </div>
+          <div class="row-actions" aria-hidden="true">✎ ⏸ 🗑 ↑</div>
+        </div>
+      </div>
+      <div class="v-notch">
+        <h3>暂停 · 方案 1（深色缺口斜纹）</h3>
+        <div class="row">
+          <div class="preview">
+            <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+            <div class="bar"><div class="divider"></div><div class="fill" style="width:28%"></div></div>
+          </div>
+          <div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-css">焦点：暂停条与进行中条「同色同长」，只有斜纹叠加差异 → 视觉连续，不再像换了个组件。</div>
+  </div>
+
+  <h2>长条对照 + 紧凑态（4px）· 方案 1</h2>
+  <div class="card v-notch">
+    <p class="card-desc">下面同一方案铺开看：长进度更容易判断斜纹密度；紧凑态是多条任务折叠时的真实高度（4px），此时 5px 条纹会被裁切，需要确认仍然好看。</p>
+    <div class="stack">
+      <div class="row">
+        <div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">长进度 72%：斜纹密度</span></div>
+          <div class="bar"><div class="divider" data-count="1"></div><div class="fill" style="width:72%"></div></div>
+        </div>
+        <div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div>
+      </div>
+      <div class="row">
+        <div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">进行中同长度（对照）</span></div>
+          <div class="bar"><div class="divider" data-count="1"></div><div class="fill fill-active" style="width:72%"></div></div>
+        </div>
+        <div class="row-actions" aria-hidden="true">✎ ⏸ 🗑 ↑</div>
+      </div>
+      <div class="row">
+        <div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">紧凑态 4px（多条折叠）</span></div>
+          <div class="bar compact"><div class="fill" style="width:72%"></div></div>
+        </div>
+        <div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div>
+      </div>
+      <div class="row">
+        <div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">极早期 3%（最小宽度 10px 兜底）</span></div>
+          <div class="bar"><div class="fill" style="width:3%"></div></div>
+        </div>
+        <div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>候选方案（点进度/窗口滑杆，全部同步联动）</h2>
+  <div class="grid" id="grid"></div>
+
+  <p class="foot">
+    <strong>建议与取舍</strong>
+    <ol>
+      <li><strong>1 · 深色缺口斜纹</strong>：最贴近你的想法——原条原色保留，只用底色切出斜纹。</li>
+      <li><strong>6 · 方案 1 + 可见轨道底</strong>：顺带补上 <code>line-secondary</code> 未设置导致轨道不可见的问题。</li>
+      <li><strong>2 / 3</strong>：更柔和或更细密的变体，看你要多强的"停住"感。</li>
+      <li>对照的 <strong>8 · 当前实现</strong>：灰底替换白条，正是你觉得「和原进度条有差异」的那个。</li>
+    </ol>
+    选好编号告诉我（如 <code>1</code>），我再落到 <code>src/client/styles.ts</code> 并补紧凑态（4px）与最小宽度（10px）的验证。
+  </p>
+</div>
+
+<script>
+const VARIANTS = [
+  { id: '1', cls: 'v-notch', title: '1 · 白条 + 深色缺口斜纹', tag: '推荐', rec: true,
+    desc: '保留原条（近白 #f9fafb），只用面板底色把白条"切"出 5px 斜向缺口。与进行中条同长同色，只多一层纹理——最贴近「原进度条加透明斜纹」。',
+    css: 'background:\n  repeating-linear-gradient(115deg, transparent 0 5px, var(--bg) 5px 10px),\n  var(--dsw-alias-brand-primary);' },
+  { id: '2', cls: 'v-black', title: '2 · 半透明黑斜纹', tag: '柔和',
+    desc: '叠 55% 黑斜纹而非实底，白条仍留一点亮度，纹路边缘更柔；暗色下比方案 1 含蓄。',
+    css: 'background:\n  repeating-linear-gradient(115deg, rgba(0,0,0,.55) 0 5px, transparent 5px 10px),\n  var(--dsw-alias-brand-primary);' },
+  { id: '3', cls: 'v-fine', title: '3 · 窄深色斜纹', tag: '细密',
+    desc: '3px 密纹 + 45% 黑。像「磁带停住」，密度更高；低 DPI 下可能发糊，需实机确认。',
+    css: 'background:\n  repeating-linear-gradient(115deg, rgba(0,0,0,.45) 0 3px, transparent 3px 7px),\n  var(--dsw-alias-brand-primary);' },
+  { id: '4', cls: 'v-reverse', title: '4 · 反方向缺口 (65°)', tag: '65°',
+    desc: '方向改为 65°。与进行中的横向时间轴形成斜向区分，密度同方案 1。',
+    css: 'background:\n  repeating-linear-gradient(65deg, transparent 0 5px, var(--bg) 5px 10px),\n  var(--dsw-alias-brand-primary);' },
+  { id: '5', cls: 'v-dim', title: '5 · 缺口斜纹 + 整体降透明', tag: '停住感',
+    desc: '在方案 1 基础上 opacity .72，整条暗下去，"暂停"语义最强；代价是白条本色被削弱。',
+    css: 'background:\n  repeating-linear-gradient(115deg, transparent 0 5px, var(--bg) 5px 10px),\n  var(--dsw-alias-brand-primary);\nopacity: .72;' },
+  { id: '6', cls: 'v-track', title: '6 · 缺口斜纹 + 可见轨道底', tag: '顺带修 bug',
+    desc: '同方案 1，但给轨道补 10% 白底。因为 --dsw-alias-line-secondary 在本主题下**未设置**，轨道现在几乎不可见——缺口斜纹会"漏"到面板底色上。',
+    css: '/* fill 同方案 1 */\n.v-track .bar { background: rgba(255,255,255,.10); }' },
+  { id: '7', cls: 'v-dual', title: '7 · 双色斜纹（缺口 + 蓝细线）', tag: '层次最多',
+    desc: '深色缺口之外再叠一条蓝色细线。视觉最"设计感"，但引入品牌蓝（#f9fafb 之外的第二色），与"克制"取向相悖。',
+    css: 'background:\n  repeating-linear-gradient(115deg, transparent 0 4px, var(--bg) 4px 8px),\n  repeating-linear-gradient(115deg, rgba(120,150,255,.55) 0 1px, transparent 1px 8px),\n  var(--dsw-alias-brand-primary);' },
+  { id: '8', cls: 'v-current', title: '8 · 当前生产实现（对照）', tag: '现状', cur: true,
+    desc: '你现在看到的：灰底斜纹替换白条。与进行中条明显不同——这就是你说的「有差异」。',
+    css: 'background:\n  repeating-linear-gradient(115deg, var(--dsw-alias-label-tertiary) 0 5px, transparent 5px 10px),\n  color-mix(in srgb, var(--dsw-alias-label-tertiary) 55%, var(--dsw-alias-line-secondary));' },
+];
+
+const grid = document.getElementById('grid');
+const pct = document.getElementById('pct');
+const win = document.getElementById('win');
+const pctLabel = document.getElementById('pctLabel');
+const winLabel = document.getElementById('winLabel');
+
+function fmtWin(min) {
+  if (min < 60) return min + ' 分钟';
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? h + ' 小时 ' + m + ' 分' : h + ' 小时';
+}
+
+function render() {
+  const ratio = Number(pct.value) / 100;
+  const minutes = Number(win.value);
+  const remainSec = Math.round(minutes * 60 * (1 - ratio));
+  const hh = String(Math.floor(remainSec / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((remainSec % 3600) / 60)).padStart(2, '0');
+  const ss = String(remainSec % 60).padStart(2, '0');
+  const remainText = remainSec >= 3600 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+  pctLabel.textContent = pct.value + '%';
+  winLabel.textContent = fmtWin(minutes);
+
+  grid.innerHTML = VARIANTS.map((v) => `
+    <article class="card ${v.cls}">
+      <div class="card-head">
+        <span class="card-title">${v.title}</span>
+        <span class="card-tag ${v.rec ? 'rec' : v.cur ? 'cur' : ''}">${v.tag}</span>
+      </div>
+      <p class="card-desc">${v.desc}</p>
+      <div class="row">
+        <div class="preview">
+          <div class="line">
+            <span class="time">15:30</span>
+            <span class="count">已暂停</span>
+            <span class="prompt">看一下构建结果</span>
+          </div>
+          <div class="bar">
+            <div class="divider" data-count="1"></div>
+            <div class="fill" style="width:${Math.max(6, ratio * 100)}%"></div>
+          </div>
+        </div>
+        <div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div>
+      </div>
+      <div class="card-css">${v.css}</div>
+    </article>
+  `).join('');
+
+  // 按窗口时长画等比刻度（与生产 --ss-bar-divider 同构；此处近似展示）
+  const count = Math.max(1, Math.ceil(minutes / 60));
+  document.querySelectorAll('.divider').forEach((d) => {
+    if (count > 1) {
+      d.style.backgroundImage =
+        `repeating-linear-gradient(to right, transparent 0, transparent calc((100% - 1px) / ${count}), var(--ss-bar-divider) calc((100% - 1px) / ${count}), var(--ss-bar-divider) calc(100% / ${count}))`;
+    } else {
+      d.style.backgroundImage = 'none';
+    }
+  });
+}
+
+pct.addEventListener('input', render);
+win.addEventListener('input', render);
+
+// 主题切换：覆盖 prefers-color-scheme，方便一次看两个主题
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const cur = document.documentElement.dataset.theme;
+  const next = cur === 'light' ? 'dark' : cur === 'dark' ? '' : 'light';
+  if (next) document.documentElement.dataset.theme = next;
+  else delete document.documentElement.dataset.theme;
+  document.getElementById('themeBtn').textContent =
+    next === 'light' ? '当前：浅色' : next === 'dark' ? '当前：深色' : '切换浅/深色';
+});
+
+render();
+</script>
+</body>
+</html>

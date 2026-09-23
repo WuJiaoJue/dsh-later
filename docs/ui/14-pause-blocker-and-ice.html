@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-later · 暂停：阻塞头 & 冰封效果</title>
+<style>
+  /*
+   * ⚠️ 颜色全部来自真实 dock 的 getComputedStyle 实测，不要凭印象改：
+   *   --dsw-alias-brand-primary = #f9fafb  （进度条填充：近白，不是蓝）
+   *   --dsw-alias-label-tertiary= #adb2b8  （时间/次要文字）
+   *   --dsw-alias-line-secondary= 未设置    （轨道实际透明）
+   *   宿主面板为深色（body ≈ #151517）
+   * 结构（与 ScheduleDock 一致）：
+   *   .bar > .divider(刻度) + .fill(填充)
+   * 本 demo 额外在 .fill 内放一个 .head（尾部"阻塞"），
+   * 这是唯一需要改 JSX 的地方（加 1 个空 span）。
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #1b1c1f;
+    --bg-soft: #151517;
+    --text: #f9fafb;
+    --text-dim: #adb2b8;
+    --text-3rd: #7c828a;
+    --brand: #f9fafb;
+    --line: rgba(255,255,255,.10);
+    --line-strong: rgba(255,255,255,.18);
+    --track: rgba(255,255,255,.10);
+    --tip: #202124;
+    --danger: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 64px;
+    background: var(--bg-soft); color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  }
+  .page { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 14px; margin: 28px 0 10px; color: var(--text-dim); font-weight: 600; }
+  .lede { margin: 0 0 4px; color: var(--text-dim); font-size: 13px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+    margin: 18px 0 6px; padding: 12px 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .controls input[type=range] { width: 180px; }
+  .controls .val { color: var(--text); font-variant-numeric: tabular-nums; min-width: 52px; }
+  .controls .spacer { flex: 1; }
+
+  /* ===== dock 行几何（与生产一致） ===== */
+  .row { display: flex; align-items: center; gap: 10px;
+    min-height: 36px; padding: 4px 8px 4px 10px; border-radius: 8px; background: var(--tip); }
+  .preview { flex: auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .time, .count { flex: none; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .prompt { flex: 1; min-width: 0; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-actions { display: flex; gap: 10px; flex: none; color: var(--text-dim); font-size: 12px; }
+
+  .bar { position: relative; height: 6px; border-radius: 999px; overflow: hidden;
+    background: var(--track); --ss-bar-divider: color-mix(in srgb, var(--text) 35%, transparent); }
+  .bar.compact { height: 4px; }
+  .divider { position: absolute; inset: 0; pointer-events: none; z-index: 0; background-repeat: no-repeat; }
+  .fill { position: relative; z-index: 1; height: 100%; border-radius: 999px;
+    background: var(--brand); transition: none; min-width: 10px; }
+  .fill-active { background: var(--brand) !important; }
+
+  /* ============================================================
+     方向 A：尾部「阻塞」——在填充的末端放一个硬边标记，
+     像管道被塞住/闸门落下。实现：.fill 内放 .head（绝对定位到右缘）。
+     若不想改 JSX，也可只用 border-right + 伪元素；这里给出两种写法。
+     ============================================================ */
+
+  /* A1 · 闸门：末端一道深色竖条（最克制，像"卡住"） */
+  .a-gate .fill::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 3px;
+    background: var(--bg); border-radius: 0 999px 999px 0;
+  }
+
+  /* A2 · 活塞：末端一个圆形凸起（像被一颗球堵住） */
+  .a-plug .fill::after {
+    content: ''; position: absolute; top: 50%; right: -1px; width: 8px; height: 8px;
+    transform: translateY(-50%); border-radius: 50%;
+    background: var(--brand); box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--bg);
+  }
+
+  /* A3 · 路障：末端一段高对比斜纹块（施工路障语义） */
+  .a-barrier .fill::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 6px;
+    background: repeating-linear-gradient(135deg,
+      var(--warn) 0 2px, var(--bg) 2px 4px);
+    border-radius: 0 999px 999px 0;
+  }
+
+  /* A4 · 锁扣：末端一个深色凹槽 + 竖线，像插销落下 */
+  .a-latch .fill::after {
+    content: ''; position: absolute; top: -1px; right: 0; bottom: -1px; width: 4px;
+    background: var(--bg); border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+
+  /* A5 · 封口：末端直接收成深色圆头（像被"切断"） */
+  .a-cap .fill {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 4px), transparent calc(100% - 4px));
+    mask-image: linear-gradient(to right, #000 calc(100% - 4px), transparent calc(100% - 4px));
+  }
+
+  /* A6 · 双闸：末端两道深色竖条（"卡死"感更强） */
+  .a-double .fill::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 7px;
+    background: repeating-linear-gradient(to right,
+      var(--bg) 0 2px, transparent 2px 4px);
+  }
+
+  /* ============================================================
+     方向 B：冰封/结霜——整条被冻住：冷色 + 霜纹 + 边缘高光。
+     关键：把白条整体"降温"（偏蓝白），再叠斜向霜纹与顶部高光。
+     ============================================================ */
+
+  /* B1 · 霜纹：冷白条 + 细斜霜纹（最接近"结霜"，保留原条形状） */
+  .b-frost .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.55) 0 2px, transparent 2px 7px),
+      linear-gradient(180deg, #ffffff 0%, #dbe7f5 55%, #b9cde6 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+  }
+
+  /* B2 · 冰晶：冷白条 + 冰裂纹（双向细纹）+ 顶部高光 */
+  .b-ice .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px),
+      repeating-linear-gradient(65deg, rgba(160,190,230,.55) 0 1px, transparent 1px 11px),
+      linear-gradient(180deg, #ffffff 0%, #cfe0f2 60%, #a8c3e0 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.95);
+  }
+
+  /* B3 · 冰锥：末端有"垂冰"（结合方向 A 的阻塞头） */
+  .b-icicle .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.45) 0 2px, transparent 2px 8px),
+      linear-gradient(180deg, #ffffff 0%, #d3e2f3 55%, #adc7e4 100%);
+  }
+  .b-icicle .fill::after {
+    content: ''; position: absolute; top: 0; right: -2px; width: 5px; height: 100%;
+    background: linear-gradient(180deg, #ffffff 0%, #cfe0f2 50%, #9fbcdd 100%);
+    clip-path: polygon(0 0, 100% 0, 60% 100%, 0 100%);
+  }
+
+  /* B4 · 霜冻渐隐：条越靠末端越"结霜发白"（进度被冻住） */
+  .b-glaze .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.35) 0 2px, transparent 2px 8px),
+      linear-gradient(90deg, #f9fafb 0%, #eef4fa 60%, #ffffff 100%);
+    box-shadow: inset 0 0 0 1px rgba(190,215,240,.6);
+  }
+
+  /* B5 · 冰面反光：一条镜面高光横贯，像冰面反射 */
+  .b-shine .fill {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.95) 0 30%, transparent 30% 100%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,.4) 0 2px, transparent 2px 9px),
+      linear-gradient(180deg, #ffffff 0%, #d8e6f6 60%, #b3cbe7 100%);
+  }
+
+  /* B6 · 深冰：冷蓝更重，暗色下最"冻结" */
+  .b-deep .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.35) 0 2px, transparent 2px 7px),
+      linear-gradient(180deg, #eaf3ff 0%, #9fc0e8 55%, #6f9dd4 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+  }
+
+  /* B7 · 冰封 + 闸门（两个方向结合） */
+  .b-lock .fill {
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,.5) 0 2px, transparent 2px 7px),
+      linear-gradient(180deg, #ffffff 0%, #dbe7f5 55%, #b9cde6 100%);
+  }
+  .b-lock .fill::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 3px;
+    background: var(--bg);
+  }
+
+  /* ===== 卡片 ===== */
+  .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; }
+  .card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .card-title { font-size: 13px; font-weight: 600; }
+  .card-tag { font-size: 10px; padding: 1px 7px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--text-dim); }
+  .card-desc { margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); }
+  .card-css { margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--line);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .compare { grid-template-columns: 1fr; } }
+  .compare h3 { font-size: 12px; margin: 0 0 8px; color: var(--text-dim); font-weight: 600; }
+  .stack { display: grid; gap: 8px; }
+  /* 放大细节条：把 6px 轨道放大到 18px，方便判断纹理与末端形状 */
+  .zoom .bar { height: 18px; }
+  .zoom .fill { border-radius: 999px; }
+  .zoom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+  @media (max-width: 680px) { .zoom-grid { grid-template-columns: 1fr; } }
+  .zoom-item > .zlabel { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: block; }
+  .foot { margin-top: 28px; font-size: 12px; color: var(--text-dim); }
+  .foot ol { margin: 8px 0 0; padding-left: 20px; }
+  .foot li { margin: 4px 0; }
+  .note { margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>暂停效果探索 · 尾部「阻塞」& 整条「冰封」</h1>
+  <p class="lede">
+    两个方向：<strong>A 方向</strong>在进度条末端放一个硬边标记（闸门/活塞/路障/锁扣）；
+    <strong>B 方向</strong>把整条"冻住"（霜纹 + 冷色 + 高光）。颜色均按真实 dock 实测值
+    （填充 <code>#f9fafb</code> 近白、面板深色、轨道透明）。
+  </p>
+
+  <div class="controls">
+    <label>进度 <input id="pct" type="range" min="4" max="92" value="62" /><span class="val" id="pctLabel">62%</span></label>
+    <label>窗口 <input id="win" type="range" min="5" max="180" value="60" /><span class="val" id="winLabel">1 小时</span></label>
+    <span class="spacer"></span>
+  </div>
+
+  <h2>先看并排对照（同一进度）</h2>
+  <div class="card">
+    <div class="compare">
+      <div>
+        <h3>进行中（原样）</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">剩 43:12</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="divider"></div><div class="fill fill-active" style="width:62%"></div></div>
+        </div><div class="row-actions" aria-hidden="true">✎ ⏸ 🗑 ↑</div></div>
+      </div>
+      <div class="a-gate">
+        <h3>A1 · 尾部闸门</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="divider"></div><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      </div>
+      <div class="b-frost">
+        <h3>B1 · 霜纹冰封</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="divider"></div><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      </div>
+      <div class="b-lock">
+        <h3>B7 · 冰封 + 闸门（结合）</h3>
+        <div class="row"><div class="preview">
+          <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+          <div class="bar"><div class="divider"></div><div class="fill" style="width:62%"></div></div>
+        </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      </div>
+    </div>
+    <div class="note">A1 只加一个 <code>::after</code>（无需改 JSX）；B1 纯改背景；B7 两者叠加。</div>
+  </div>
+
+  <h2>放大细节（轨道 ×3 = 18px，便于判断纹理与末端形状）</h2>
+  <div class="card">
+    <p class="card-desc">真实高度只有 6px，很多差异在正常尺寸下看不出来。这里把轨道放大到 18px 看细节；<b>但请以下面 6px 的真实尺寸为准</b>——放大后好看不代表 6px 下成立。</p>
+    <div class="zoom">
+      <div class="zoom-grid">
+        <div class="zoom-item fill-active"><span class="zlabel">进行中（对照）</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item a-gate"><span class="zlabel">A1 闸门</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item a-plug"><span class="zlabel">A2 活塞</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item a-barrier"><span class="zlabel">A3 路障</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item a-latch"><span class="zlabel">A4 插销</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item a-double"><span class="zlabel">A6 双闸</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item b-frost"><span class="zlabel">B1 霜纹</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item b-ice"><span class="zlabel">B2 冰晶</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item b-icicle"><span class="zlabel">B3 垂冰</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+        <div class="zoom-item b-lock"><span class="zlabel">B7 冰封+闸门</span><div class="bar"><div class="fill" style="width:62%"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>边界：紧凑态 4px / 极早期 3% / 长条</h2>
+  <div class="card a-gate">
+    <p class="card-desc">尾部阻塞在<b>短条</b>上最容易出问题：10px 的最小宽度里塞 3px 闸门，会把条几乎吃光。下面逐一验证。</p>
+    <div class="stack">
+      <div class="row"><div class="preview">
+        <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">A1 紧凑态 4px（闸门 3px 显得过粗）</span></div>
+        <div class="bar compact"><div class="fill" style="width:62%"></div></div>
+      </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      <div class="row"><div class="preview">
+        <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">A1 极早期 3%（最小宽度 10px 兜底，闸门占比过大）</span></div>
+        <div class="bar"><div class="fill" style="width:3%"></div></div>
+      </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      <div class="row"><div class="preview">
+        <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">A1 长条（正常比例，最自然）</span></div>
+        <div class="bar"><div class="fill" style="width:92%"></div></div>
+      </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+    </div>
+  </div>
+
+  <h2>A 方向 · 尾部「阻塞」</h2>
+  <div class="grid" id="gridA"></div>
+
+  <h2>B 方向 · 整条「冰封」</h2>
+  <div class="grid" id="gridB"></div>
+
+  <p class="foot">
+    <strong>我的看法</strong>
+    <ol>
+      <li><strong>A1 闸门</strong> 语义最准（"卡住了"）、实现最省（一个 <code>::after</code>，不改 JSX）。短条上会偏粗，需要 <code>min-width</code> 配合或按比例缩。</li>
+      <li><strong>A2 活塞</strong> 最"物理"，但圆点会超出轨道高度，4px 紧凑态下几乎看不清。</li>
+      <li><strong>B1 霜纹</strong> 最像"冻住"，但它是<b>换掉</b>白条底色（冷白渐变）——和你先前"保留原条"的取向有冲突，属于另一条路线。</li>
+      <li><strong>B7</strong> 结合了两者：既结霜、末端又被闸住。视觉信息最强，也可能最"重"。</li>
+    </ol>
+    <div class="note">
+      实现成本提示：A 方向需要在 <code>.fill</code> 内加一个空 <code>&lt;span class="ss-bar-head"&gt;</code>
+      才能精确控制（<code>::after</code> 已能覆盖多数情况，可先不加）；B 方向纯 CSS，零 JSX 改动。
+    </div>
+  </p>
+</div>
+
+<script>
+const A = [
+  { id:'a1', cls:'a-gate', title:'A1 · 闸门', tag:'推荐',
+    desc:'末端一道 3px 深色竖条，像闸门落下把进度卡住。最克制、语义最准，纯 ::after 实现。',
+    css:'.a-gate .fill::after {\n  content:""; position:absolute; top:0; right:0; bottom:0; width:3px;\n  background: var(--dsw-alias-bg-base); border-radius:0 999px 999px 0;\n}' },
+  { id:'a2', cls:'a-plug', title:'A2 · 活塞/堵头', tag:'物理感',
+    desc:'末端一枚圆形凸起，像被一颗球堵住。视觉有趣，但会溢出轨道，4px 紧凑态下几乎不可见。',
+    css:'.a-plug .fill::after {\n  content:""; position:absolute; top:50%; right:-1px; width:8px; height:8px;\n  transform:translateY(-50%); border-radius:50%; background: var(--dsw-alias-brand-primary);\n  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--bg);\n}' },
+  { id:'a3', cls:'a-barrier', title:'A3 · 路障斜纹', tag:'高对比',
+    desc:'末端黄黑斜纹块，施工路障语义。辨识度最高，但引入警告黄——会和"已到期"的红/琥珀状态抢语义。',
+    css:'.a-barrier .fill::after {\n  content:""; position:absolute; top:0; right:0; bottom:0; width:6px;\n  background: repeating-linear-gradient(135deg, var(--warn) 0 2px, var(--bg) 2px 4px);\n  border-radius:0 999px 999px 0;\n}' },
+  { id:'a4', cls:'a-latch', title:'A4 · 插销', tag:'机械感',
+    desc:'末端一个略高出轨道的深色小方块，像插销落下。比 A1 更有"零件感"，代价是轻微超出轨道高度。',
+    css:'.a-latch .fill::after {\n  content:""; position:absolute; top:-1px; right:0; bottom:-1px; width:4px;\n  background: var(--bg); border-radius:2px;\n  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);\n}' },
+  { id:'a5', cls:'a-cap', title:'A5 · 封口（遮罩切断）', tag:'轻',
+    desc:'用 mask 把末端 4px 渐隐掉，像被"切断"。最轻，无新增颜色；但"阻塞"语义最弱。',
+    css:'.a-cap .fill {\n  mask-image: linear-gradient(to right, #000 calc(100% - 4px), transparent calc(100% - 4px));\n}' },
+  { id:'a6', cls:'a-double', title:'A6 · 双闸', tag:'卡死感',
+    desc:'末端两道深色竖条，"卡死"感更强。3px 条在 6px 轨道上仍清爽，但 4px 紧凑态会显脏。',
+    css:'.a-double .fill::after {\n  content:""; position:absolute; top:0; right:0; bottom:0; width:7px;\n  background: repeating-linear-gradient(to right, var(--bg) 0 2px, transparent 2px 4px);\n}' },
+];
+
+const B = [
+  { id:'b1', cls:'b-frost', title:'B1 · 霜纹冰封', tag:'推荐',
+    desc:'白条转冷白渐变 + 细斜霜纹 + 顶部高光。最像"冻住"，且仍是同一条形状。注意：换掉了原条底色。',
+    css:'.b-frost .fill {\n  background:\n    repeating-linear-gradient(115deg, rgba(255,255,255,.55) 0 2px, transparent 2px 7px),\n    linear-gradient(180deg, #fff 0%, #dbe7f5 55%, #b9cde6 100%);\n  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);\n}' },
+  { id:'b2', cls:'b-ice', title:'B2 · 冰晶裂纹', tag:'细节多',
+    desc:'双向细纹模拟冰裂，冷色更明显。1px 纹理在低 DPI 或 4px 紧凑态下会糊成一片。',
+    css:'.b-ice .fill {\n  background:\n    repeating-linear-gradient(115deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px),\n    repeating-linear-gradient(65deg, rgba(160,190,230,.55) 0 1px, transparent 1px 11px),\n    linear-gradient(180deg, #fff 0%, #cfe0f2 60%, #a8c3e0 100%);\n}' },
+  { id:'b3', cls:'b-icicle', title:'B3 · 末端垂冰', tag:'A+B 结合',
+    desc:'结霜 + 末端一片"垂冰"（clip-path 三角）。把冰封和阻塞合在一起，末端形状最有叙事性。',
+    css:'.b-icicle .fill::after {\n  content:""; position:absolute; top:0; right:-2px; width:5px; height:100%;\n  background: linear-gradient(180deg,#fff,#cfe0f2 50%,#9fbcdd);\n  clip-path: polygon(0 0, 100% 0, 60% 100%, 0 100%);\n}' },
+  { id:'b4', cls:'b-glaze', title:'B4 · 霜冻渐隐', tag:'含蓄',
+    desc:'末端逐渐发白，像进度被霜"糊住"。变化最细，几乎不改变整体观感。',
+    css:'.b-glaze .fill {\n  background:\n    repeating-linear-gradient(115deg, rgba(255,255,255,.35) 0 2px, transparent 2px 8px),\n    linear-gradient(90deg, #f9fafb 0%, #eef4fa 60%, #fff 100%);\n  box-shadow: inset 0 0 0 1px rgba(190,215,240,.6);\n}' },
+  { id:'b5', cls:'b-shine', title:'B5 · 冰面反光', tag:'镜面',
+    desc:'上半部一条镜面高光横贯，像冰面反射。立体感最强，但在 6px 高度里高光只占 2px，容易糊。',
+    css:'.b-shine .fill {\n  background:\n    linear-gradient(180deg, rgba(255,255,255,.95) 0 30%, transparent 30% 100%),\n    repeating-linear-gradient(115deg, rgba(255,255,255,.4) 0 2px, transparent 2px 9px),\n    linear-gradient(180deg, #fff 0%, #d8e6f6 60%, #b3cbe7 100%);\n}' },
+  { id:'b6', cls:'b-deep', title:'B6 · 深冰冷蓝', tag:'最强',
+    desc:'冷蓝最重，暗色主题下最"冻结"。代价是离原条的白最远，暂停前后色差最大。',
+    css:'.b-deep .fill {\n  background:\n    repeating-linear-gradient(115deg, rgba(255,255,255,.35) 0 2px, transparent 2px 7px),\n    linear-gradient(180deg, #eaf3ff 0%, #9fc0e8 55%, #6f9dd4 100%);\n}' },
+  { id:'b7', cls:'b-lock', title:'B7 · 冰封 + 闸门', tag:'结合',
+    desc:'B1 的霜纹 + A1 的末端闸门。信息最完整：既"冻住"又"卡住"。也可能是视觉最重的一个。',
+    css:'.b-lock .fill::after {\n  content:""; position:absolute; top:0; right:0; bottom:0; width:3px;\n  background: var(--bg);\n}' },
+];
+
+const pct = document.getElementById('pct');
+const win = document.getElementById('win');
+const pctLabel = document.getElementById('pctLabel');
+const winLabel = document.getElementById('winLabel');
+
+function fmtWin(min) {
+  if (min < 60) return min + ' 分钟';
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? h + ' 小时 ' + m + ' 分' : h + ' 小时';
+}
+
+function cardHtml(v, w) {
+  return `
+    <article class="card ${v.cls}">
+      <div class="card-head"><span class="card-title">${v.title}</span><span class="card-tag">${v.tag}</span></div>
+      <p class="card-desc">${v.desc}</p>
+      <div class="row"><div class="preview">
+        <div class="line"><span class="time">15:30</span><span class="count">已暂停</span><span class="prompt">看一下构建结果</span></div>
+        <div class="bar"><div class="divider"></div><div class="fill" style="width:${w}%"></div></div>
+      </div><div class="row-actions" aria-hidden="true">✎ ▶ 🗑 ↑</div></div>
+      <div class="card-css">${v.css}</div>
+    </article>`;
+}
+
+function render() {
+  const w = Math.max(6, Number(pct.value));
+  const minutes = Number(win.value);
+  const remainSec = Math.round(minutes * 60 * (1 - Number(pct.value) / 100));
+  const hh = String(Math.floor(remainSec / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((remainSec % 3600) / 60)).padStart(2, '0');
+  const ss = String(remainSec % 60).padStart(2, '0');
+  pctLabel.textContent = pct.value + '%';
+  winLabel.textContent = fmtWin(minutes);
+
+  document.getElementById('gridA').innerHTML = A.map((v) => cardHtml(v, w)).join('');
+  document.getElementById('gridB').innerHTML = B.map((v) => cardHtml(v, w)).join('');
+
+  const count = Math.max(1, Math.ceil(minutes / 60));
+  document.querySelectorAll('.divider').forEach((d) => {
+    d.style.backgroundImage = count > 1
+      ? `repeating-linear-gradient(to right, transparent 0, transparent calc((100% - 1px) / ${count}), var(--ss-bar-divider) calc((100% - 1px) / ${count}), var(--ss-bar-divider) calc(100% / ${count}))`
+      : 'none';
+  });
+}
+
+pct.addEventListener('input', render);
+win.addEventListener('input', render);
+render();
+</script>
+</body>
+</html>
