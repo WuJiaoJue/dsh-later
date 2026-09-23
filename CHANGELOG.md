@@ -4,6 +4,16 @@
 
 ## 未发布
 
+- **fix** 「插话发送」对普通（非暂停）提醒报 `schedule_not_found`。
+  - 根因：GUI 传的是**投影里的 id**，而它「稳定 uid 优先」
+    （`wireItemOf`：`id: uid ?? record.id`）；日志记录却用 `schedule-N`。
+    `steerById` 直接 `ScheduleId(id)` 后按 `r.id === scheduleId` 比对，
+    **没有做 uid → 日志 id 的换算**，因此所有由用户工具创建的提醒插话都失败。
+  - 实测：uid `f0fc0c90…` vs 日志 id `schedule-1`，必然不相等。
+  - 删除 / 暂停路径早已用 `resolveActiveScheduleId` 做了这层换算，插话是漏网的。
+  - 修复：插话先按 uid 查当前活动的日志 id（`findScheduleIdByUid`），
+    找不到再当作日志 id 原样使用（兼容无 uid 的旧数据与直接传 `schedule-N`）。
+    dispatch 事件仍写**日志 id**，不是 uid。
 - **fix** 进度条「速度不均衡 / 每秒一跳」：相位参数被逐秒重算导致双倍计数。
   - 根因：CSS 动画挂上后会**自行推进**；而 `useNow(1000)` 每秒触发重渲染，
     每次都把 `delay = -(now - start)` 重算一遍，浏览器便把播放头又前移 1 秒

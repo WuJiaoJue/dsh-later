@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dueUserDecision, UserScheduleRuntime } from '../lib/runtime.js';
 import { foldScheduleEvents } from '@deepseek-ai/dsh-schedule';
-import { getPaused, recordPaused } from '../lib/ownership-store.js';
+import { getPaused, recordPaused, recordOwnership } from '../lib/ownership-store.js';
 import { freshOwnershipDir } from './helpers/ownership-state.mjs';
 
 const S = (over = {}) => ({
@@ -390,5 +390,52 @@ test('暂停项插话：不存在的 id 仍走日志路径并返回 schedule_not
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.code, 'schedule_not_found');
   assert.equal(agent.steered.length, 0);
+  await runtime.dispose();
+});
+
+/* ==================== 插话：wire id 是 uid，必须换算 ==================== */
+/**
+ * 回归：GUI 传过来的是投影里的 id（= 稳定 uid），而日志记录用 schedule-N。
+ * 此前 steerById 直接按 scheduleId 比对，导致**所有**用户工具创建的提醒
+ * 插话都报 schedule_not_found（实测：uid f0fc0c90… vs 日志 id schedule-1）。
+ */
+const SID_STEER_UID = 'session-steer-uid-1';
+
+class FakeSessionUid extends FakeSession {
+  constructor(seed = []) {
+    super(seed);
+    this.header = { id: SID_STEER_UID, seedLength: 0 };
+  }
+}
+
+test('回归：插话接受 wire 的 uid（而非只认日志 scheduleId）', async () => {
+  freshOwnershipDir();
+  const due = new Date(Date.now() - 5000).toISOString();
+  const session = new FakeSessionUid(sessionWithDueAt('schedule-1', due).events);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+
+  // 模拟 create 时写入的 sidecar 所有权：日志 id=schedule-1，uid=U1
+  recordOwnership(SID_STEER_UID, 'schedule-1', 'context', 'uid-U1');
+
+  // GUI 传的是 uid
+  const result = await runtime.steerById('uid-U1');
+  assert.deepEqual(result, { ok: true, id: 'uid-U1', steered: true }, '按 uid 插话应成功');
+  assert.equal(agent.steered.length, 1);
+  // dispatch 落在真正的日志 id 上
+  const dispatch = session.events.filter((e) => e.type === 'schedule/change' && e.data.operation === 'dispatch');
+  assert.equal(dispatch.length, 1);
+  assert.equal(dispatch[0].data.id, 'schedule-1', 'dispatch 必须写日志 id 而非 uid');
+  await runtime.dispose();
+});
+
+test('插话：直接传日志 scheduleId 仍然可用（向后兼容）', async () => {
+  freshOwnershipDir();
+  const due = new Date(Date.now() - 5000).toISOString();
+  const session = new FakeSessionUid(sessionWithDueAt('schedule-1', due).events);
+  const agent = new FakeAgent(session);
+  const runtime = new UserScheduleRuntime(fakeCtx(agent), agent);
+  const result = await runtime.steerById('schedule-1');
+  assert.deepEqual(result, { ok: true, id: 'schedule-1', steered: true });
   await runtime.dispose();
 });

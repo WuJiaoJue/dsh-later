@@ -27,7 +27,7 @@ import {
 } from '@deepseek-ai/dsh-schedule';
 import type { ScheduleRecord, OneShotScheduleRecord, EveryScheduleRecord } from '@deepseek-ai/dsh-schedule';
 import { OWNED_EVENT } from './domain.js';
-import { getPaused, removePaused } from './ownership-store.js';
+import { findScheduleIdByUid, getPaused, removePaused } from './ownership-store.js';
 import type { UserScheduleDelivery } from './domain.js';
 import { foldUserState } from './user-tools.js';
 import { detectTimeZone, formatHhmm } from './time-utils.js';
@@ -285,7 +285,25 @@ export class UserScheduleRuntime {
     const pausedHit = this.steerPausedById(id);
     if (pausedHit !== undefined) return pausedHit;
 
-    const scheduleId = ScheduleId(id);
+    /**
+     * wire id → 日志 schedule id。
+     *
+     * ⚠️ GUI 传过来的是**投影里的 `id`**，而那是「稳定 uid 优先」的
+     * （见 projection 的 `wireItemOf`：`id: uid ?? record.id`）。而日志的
+     * `schedule/change` 记录用 `schedule-N` 作 id。两者不同，必须换算。
+     *
+     * 此前直接 `ScheduleId(id)` 并 `r.id === scheduleId` 比对，于是**所有**由
+     * 用户工具创建的活动任务插话都报 `schedule_not_found`（实测复现：
+     * uid `f0fc0c90…` vs 日志 id `schedule-1`）。删除/暂停路径早已用
+     * `resolveActiveScheduleId` 做了这层换算，插话是漏网的。
+     */
+    const sessionId = this.agent.session.header?.id;
+    const scheduleId: ReturnType<typeof ScheduleId> = (() => {
+      // 先按 uid 找当前活动的日志 id；找不到再当作日志 id 原样使用
+      //（无 uid 的旧数据 / 调用方直接传 schedule-N）。
+      const byUid = sessionId === undefined ? undefined : findScheduleIdByUid(sessionId, id);
+      return ScheduleId(byUid ?? id);
+    })();
     let claimed: { kind: 'one-shot'; records: readonly OneShotScheduleRecord[]; delivery: UserScheduleDelivery } | null = null;
     try {
       const claimedState = foldUserState(this.agent.session);
